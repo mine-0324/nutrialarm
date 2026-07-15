@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>영양제 알람</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="영양제 알람">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#0d9488">
+<style>
+  :root{
+    --teal:#0d9488; --teal-dark:#0f766e; --teal-bg:#f0fdfa;
+    --ink:#1f2937; --sub:#6b7280; --line:#e5e7eb;
+    --bg:#f8fafc; --card:#ffffff;
+    --red:#dc2626; --red-bg:#fef2f2;
+    --amber:#d97706; --amber-bg:#fffbeb;
+    --green:#16a34a; --green-bg:#f0fdf4;
+    --blue:#2563eb; --blue-bg:#eff6ff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    background:var(--bg); color:var(--ink); font-size:16px; line-height:1.5;
+    padding-bottom:calc(76px + env(safe-area-inset-bottom));
+  }
+  header{
+    background:var(--teal); color:#fff; padding:14px 20px;
+    padding-top:calc(14px + env(safe-area-inset-top));
+    position:sticky; top:0; z-index:10;
+  }
+  header h1{font-size:19px; font-weight:700}
+  header .date{font-size:13px; opacity:.9}
+  main{padding:16px; max-width:520px; margin:0 auto}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:12px}
+  .card h2{font-size:16px; margin-bottom:10px}
+  .muted{color:var(--sub); font-size:13px}
+  .small{font-size:13px}
+  button{font-family:inherit; font-size:15px; border:none; border-radius:10px; cursor:pointer}
+  .btn{display:block; width:100%; padding:13px; background:var(--teal); color:#fff; font-weight:600; margin-top:10px}
+  .btn:active{background:var(--teal-dark)}
+  .btn.gray{background:#e5e7eb; color:var(--ink)}
+  .btn.outline{background:#fff; color:var(--teal); border:1.5px solid var(--teal)}
+  .btn.danger{background:#fff; color:var(--red); border:1.5px solid #fecaca}
+  .btn.sm{display:inline-block; width:auto; padding:8px 14px; font-size:14px; margin:0}
+  /* ---- bottom tabs ---- */
+  nav{
+    position:fixed; bottom:0; left:0; right:0; z-index:20;
+    background:#fff; border-top:1px solid var(--line);
+    display:flex; padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav button{flex:1; background:none; padding:9px 0 7px; color:var(--sub); font-size:11px; border-radius:0}
+  nav button .ico{display:block; font-size:21px; margin-bottom:1px}
+  nav button.on{color:var(--teal); font-weight:700}
+  /* ---- today ---- */
+  .progress-wrap{display:flex; align-items:center; gap:14px}
+  .ring{width:64px; height:64px; flex-shrink:0}
+  .dose{display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line)}
+  .dose:last-child{border-bottom:none}
+  .dose .time-badge{
+    background:var(--teal-bg); color:var(--teal-dark); font-weight:700; font-size:13px;
+    border-radius:8px; padding:4px 8px; min-width:56px; text-align:center; flex-shrink:0;
+  }
+  .dose .name{flex:1; font-size:15px}
+  .dose .name .memo{font-size:12px; color:var(--sub)}
+  .chk{
+    width:30px; height:30px; border-radius:50%; border:2px solid #d1d5db; background:#fff;
+    flex-shrink:0; font-size:16px; color:#fff; line-height:1;
+  }
+  .chk.on{background:var(--teal); border-color:var(--teal)}
+  .dose.done .name{color:var(--sub); text-decoration:line-through}
+  .time-group-label{font-size:13px; font-weight:700; color:var(--sub); margin:14px 0 2px}
+  /* ---- supplement list ---- */
+  .supp-item{border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:10px; background:#fff}
+  .supp-item .top{display:flex; justify-content:space-between; align-items:center; gap:8px}
+  .supp-item .nm{font-weight:700; font-size:15px}
+  .supp-item .times{color:var(--teal-dark); font-size:13px; font-weight:600}
+  .supp-item .ings{font-size:12.5px; color:var(--sub); margin-top:4px}
+  .icon-btn{background:#f3f4f6; border-radius:8px; padding:6px 10px; font-size:13px; color:var(--ink)}
+  /* ---- form ---- */
+  label.fld{display:block; font-size:13.5px; font-weight:600; margin:14px 0 5px}
+  input[type=text], input[type=number], input[type=time], select{
+    width:100%; padding:11px 12px; border:1.5px solid var(--line); border-radius:10px;
+    font-size:16px; font-family:inherit; background:#fff; color:var(--ink);
+  }
+  input:focus, select:focus{outline:none; border-color:var(--teal)}
+  .row{display:flex; gap:8px; align-items:center}
+  .row > *{min-width:0}
+  .chip{
+    display:inline-flex; align-items:center; gap:6px; background:var(--teal-bg); color:var(--teal-dark);
+    border-radius:999px; padding:6px 12px; font-size:14px; font-weight:600; margin:4px 6px 0 0;
+  }
+  .chip b{cursor:pointer; font-weight:700}
+  .ing-row{display:flex; gap:6px; margin-bottom:8px; align-items:center}
+  .ing-row select{flex:1.5}
+  .ing-row input{flex:1}
+  .ing-row .unit{font-size:13px; color:var(--sub); width:34px; flex-shrink:0}
+  .ing-row .del{background:none; color:#9ca3af; font-size:18px; padding:4px; flex-shrink:0}
+  /* ---- analysis ---- */
+  .nut-row{margin-bottom:12px}
+  .nut-row .top{display:flex; justify-content:space-between; font-size:14px; margin-bottom:3px}
+  .nut-row .top .val{color:var(--sub); font-size:13px}
+  .bar{height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden}
+  .bar i{display:block; height:100%; border-radius:4px; background:var(--teal)}
+  .bar i.warn{background:var(--amber)} .bar i.over{background:var(--red)}
+  .tag{display:inline-block; font-size:11.5px; font-weight:700; border-radius:6px; padding:1px 7px; margin-left:6px; vertical-align:1px}
+  .tag.ok{background:var(--green-bg); color:var(--green)}
+  .tag.warn{background:var(--amber-bg); color:var(--amber)}
+  .tag.over{background:var(--red-bg); color:var(--red)}
+  .alert{border-radius:12px; padding:12px 14px; font-size:14px; margin-bottom:10px; line-height:1.55}
+  .alert b{display:block; margin-bottom:2px}
+  .alert.red{background:var(--red-bg); color:#991b1b}
+  .alert.amber{background:var(--amber-bg); color:#92400e}
+  .alert.green{background:var(--green-bg); color:#166534}
+  .alert.blue{background:var(--blue-bg); color:#1e40af}
+  /* ---- calendar ---- */
+  .cal-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
+  .cal-head b{font-size:17px}
+  .cal-head button{background:#f3f4f6; width:36px; height:36px; border-radius:10px; font-size:16px}
+  .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; text-align:center}
+  .cal-grid .wd{font-size:12px; color:var(--sub); font-weight:700; padding:4px 0}
+  .cal-cell{
+    aspect-ratio:1; border-radius:10px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; font-size:13.5px; background:#fff; border:1px solid transparent;
+  }
+  .cal-cell .dot{width:7px; height:7px; border-radius:50%; margin-top:2px}
+  .cal-cell.today{border-color:var(--teal); font-weight:700; color:var(--teal-dark)}
+  .cal-cell.sel{background:var(--teal); color:#fff}
+  .cal-cell.sel .dot{outline:1.5px solid #fff}
+  .legend{display:flex; gap:14px; margin-top:10px; font-size:12px; color:var(--sub); flex-wrap:wrap}
+  .legend i{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px}
+  /* ---- banner alarm ---- */
+  #alarmBanner{
+    position:fixed; top:0; left:0; right:0; z-index:100; display:none;
+    background:var(--teal); color:#fff; padding:16px 20px;
+    padding-top:calc(16px + env(safe-area-inset-top));
+    box-shadow:0 4px 20px rgba(0,0,0,.25); font-size:15px;
+  }
+  #alarmBanner b{display:block; font-size:17px; margin-bottom:2px}
+  .empty{
+    text-align:center; padding:36px 16px; color:var(--sub); font-size:14px;
+  }
+  .empty .big{font-size:40px; margin-bottom:8px}
+  details{margin-top:8px}
+  summary{font-size:14px; font-weight:600; color:var(--teal-dark); cursor:pointer; padding:6px 0}
+  details ol{padding-left:20px; font-size:14px}
+  details li{margin-bottom:6px}
+  .footer-note{font-size:12px; color:#9ca3af; text-align:center; padding:14px 20px 4px; line-height:1.6}
+</style>
+</head>
+<body>
+
+<div id="alarmBanner" onclick="hideBanner()"></div>
+<header>
+  <h1>💊 영양제 알람</h1>
+  <div class="date" id="headerDate"></div>
+</header>
+<main id="main"></main>
+<nav id="nav">
+  <button data-tab="today"><span class="ico">☀️</span>오늘</button>
+  <button data-tab="supps"><span class="ico">💊</span>영양제</button>
+  <button data-tab="analysis"><span class="ico">🔍</span>분석</button>
+  <button data-tab="calendar"><span class="ico">📅</span>달력</button>
+  <button data-tab="settings"><span class="ico">⚙️</span>설정</button>
+</nav>
+
+<script>
+"use strict";
+/* ================= 영양소 사전 =================
+   기준: 2020 한국인 영양소 섭취기준(성인) + 식약처 건강기능식품 일일섭취량.
+   rda = 하루 권장(충분) 섭취량, ul = 상한 섭취량(이 이상은 주의). null = 상한 미설정 */
+const NUTRIENTS = {
+  vitA:      {name:"비타민A",           unit:"㎍",  rda:750,  ul:3000, tip:"㎍ RAE 기준"},
+  vitD:      {name:"비타민D",           unit:"㎍",  rda:15,   ul:100,  tip:"1000IU = 25㎍"},
+  vitE:      {name:"비타민E",           unit:"㎎",  rda:12,   ul:540,  tip:"㎎ α-TE 기준"},
+  vitK:      {name:"비타민K",           unit:"㎍",  rda:75,   ul:null},
+  vitC:      {name:"비타민C",           unit:"㎎",  rda:100,  ul:2000},
+  b1:        {name:"비타민B1(티아민)",   unit:"㎎",  rda:1.2,  ul:null},
+  b2:        {name:"비타민B2(리보플라빈)",unit:"㎎", rda:1.5,  ul:null},
+  niacin:    {name:"니아신(B3)",        unit:"㎎",  rda:16,   ul:35,   tip:"니코틴산 기준 상한 35㎎"},
+  b6:        {name:"비타민B6",          unit:"㎎",  rda:1.5,  ul:100},
+  folate:    {name:"엽산",              unit:"㎍",  rda:400,  ul:1000, tip:"보충제 기준 상한 1000㎍"},
+  b12:       {name:"비타민B12",         unit:"㎍",  rda:2.4,  ul:null},
+  biotin:    {name:"비오틴",            unit:"㎍",  rda:30,   ul:null},
+  pantothenic:{name:"판토텐산(B5)",     unit:"㎎",  rda:5,    ul:null},
+  calcium:   {name:"칼슘",              unit:"㎎",  rda:800,  ul:2500},
+  magnesium: {name:"마그네슘",          unit:"㎎",  rda:350,  ul:350,  tip:"보충제 기준 상한 350㎎ (음식 제외)"},
+  iron:      {name:"철분",              unit:"㎎",  rda:12,   ul:45},
+  zinc:      {name:"아연",              unit:"㎎",  rda:10,   ul:35},
+  copper:    {name:"구리",              unit:"㎍",  rda:850,  ul:10000},
+  selenium:  {name:"셀레늄",            unit:"㎍",  rda:60,   ul:400},
+  omega3:    {name:"오메가3(EPA+DHA)",  unit:"㎎",  rda:1000, ul:2000, tip:"식약처 일일섭취량 500~2000㎎"},
+  lutein:    {name:"루테인",            unit:"㎎",  rda:20,   ul:20,   tip:"식약처 일일섭취량 10~20㎎"},
+  coq10:     {name:"코엔자임Q10",       unit:"㎎",  rda:100,  ul:100,  tip:"식약처 일일섭취량 90~100㎎"},
+  milkthistle:{name:"밀크씨슬(실리마린)",unit:"㎎", rda:130,  ul:130,  tip:"식약처 일일섭취량 130㎎"},
+  probiotics:{name:"유산균(프로바이오틱스)",unit:"억",rda:1,   ul:null, tip:"억 CFU 단위"},
+};
+
+/* ================= 자주 먹는 영양제 미리 채우기 =================
+   선택하면 일반적인 함량이 자동 입력됩니다. 실제 제품 라벨을 보고 숫자를 고쳐 쓰세요. */
+const PRESETS = [
+  {name:"종합비타민 (일반형)", ing:{vitA:700, vitC:100, vitD:10, vitE:11, b1:1.2, b2:1.4, b6:1.5, b12:2.4, niacin:15, folate:400, biotin:30, pantothenic:5, zinc:8.5}},
+  {name:"비타민C 1000㎎", ing:{vitC:1000}},
+  {name:"비타민D 1000IU", ing:{vitD:25}},
+  {name:"비타민D 2000IU", ing:{vitD:50}},
+  {name:"비타민D 5000IU", ing:{vitD:125}},
+  {name:"오메가3 (EPA+DHA 1000㎎)", ing:{omega3:1000}},
+  {name:"칼마디 (칼슘+마그네슘+비타민D)", ing:{calcium:700, magnesium:350, vitD:25}},
+  {name:"마그네슘 315㎎", ing:{magnesium:315}},
+  {name:"철분제 24㎎", ing:{iron:24}},
+  {name:"아연 15㎎", ing:{zinc:15}},
+  {name:"루테인 20㎎", ing:{lutein:20}},
+  {name:"밀크씨슬 130㎎", ing:{milkthistle:130}},
+  {name:"코엔자임Q10 100㎎", ing:{coq10:100}},
+  {name:"유산균 (100억)", ing:{probiotics:100}},
+  {name:"비타민B 컴플렉스", ing:{b1:50, b2:50, b6:50, b12:500, niacin:30, folate:400, biotin:500, pantothenic:50}},
+];
+
+/* ================= 조합 규칙 ================= */
+const COMBO_RULES = [
+  {a:"calcium", b:"iron", type:"bad",
+   msg:"칼슘과 철분은 함께 먹으면 서로 흡수를 방해해요. 두 영양제는 2시간 이상 간격을 두고 드시는 게 좋아요. (예: 칼슘은 저녁, 철분은 아침)"},
+  {a:"calcium", b:"zinc", type:"caution",
+   msg:"고용량 칼슘은 아연 흡수를 낮출 수 있어요. 가능하면 시간을 나눠 드시면 더 좋아요."},
+  {a:"iron", b:"zinc", type:"caution",
+   msg:"철분과 아연은 흡수 경로가 겹쳐서 고용량을 동시에 먹으면 서로 흡수가 떨어질 수 있어요."},
+  {a:"vitC", b:"iron", type:"good",
+   msg:"비타민C는 철분 흡수를 도와줘요. 함께 드시면 좋은 조합이에요. 👍"},
+  {a:"vitD", b:"calcium", type:"good",
+   msg:"비타민D는 칼슘 흡수를 도와줘요. 함께 드시면 좋은 조합이에요. 👍"},
+  {a:"vitD", b:"magnesium", type:"good",
+   msg:"마그네슘은 비타민D가 몸에서 활성화되는 것을 도와줘요. 좋은 조합이에요. 👍"},
+];
+
+/* ================= 데이터 저장 ================= */
+const STORE_KEY = "nutrialarm_v1";
+let state = {supps:[], records:{}};
+function load(){ try{ const s = localStorage.getItem(STORE_KEY); if(s) state = JSON.parse(s); }catch(e){} }
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function dateKey(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function todayKey(){ return dateKey(new Date()); }
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function fmtAmt(n){ return (Math.round(n*100)/100).toLocaleString("ko-KR"); }
+
+/* ================= 탭 ================= */
+let tab = "today";
+let editingId = null;   // 영양제 수정 중인 id ("new" = 새로 추가)
+let calCursor = new Date(); // 달력에 표시 중인 달
+let calSelected = todayKey();
+
+document.getElementById("nav").addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  tab = b.dataset.tab; editingId = null; render();
+});
+
+function render(){
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on", b.dataset.tab===tab));
+  const d = new Date();
+  document.getElementById("headerDate").textContent =
+    d.toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+  const m = document.getElementById("main");
+  if(tab==="today") m.innerHTML = viewToday();
+  else if(tab==="supps") m.innerHTML = editingId ? viewEdit() : viewSupps();
+  else if(tab==="analysis") m.innerHTML = viewAnalysis();
+  else if(tab==="calendar"){ m.innerHTML = viewCalendar(); }
+  else if(tab==="settings") m.innerHTML = viewSettings();
+  window.scrollTo(0,0);
+}
+
+/* ================= 오늘 탭 ================= */
+function dosesForDay(){
+  // [{suppId, name, memo, time}] 시간순
+  const list = [];
+  state.supps.forEach(s=> s.times.forEach(t=> list.push({suppId:s.id, name:s.name, memo:s.memo||"", time:t})));
+  list.sort((a,b)=> a.time.localeCompare(b.time));
+  return list;
+}
+function isChecked(dk, suppId, time){
+  return !!(state.records[dk] && state.records[dk][suppId+"@"+time]);
+}
+function toggleDose(suppId, time){
+  const dk = todayKey();
+  if(!state.records[dk]) state.records[dk] = {};
+  const k = suppId+"@"+time;
+  if(state.records[dk][k]) delete state.records[dk][k];
+  else state.records[dk][k] = Date.now();
+  save(); render();
+}
+function viewToday(){
+  const doses = dosesForDay();
+  if(doses.length===0){
+    return `<div class="card"><div class="empty"><div class="big">💊</div>
+      아직 등록된 영양제가 없어요.<br>아래 <b>[영양제]</b> 탭에서 먼저 등록해 주세요.</div>
+      <button class="btn" onclick="tab='supps';editingId='new';render()">+ 첫 영양제 등록하기</button></div>`;
+  }
+  const dk = todayKey();
+  const done = doses.filter(d=>isChecked(dk,d.suppId,d.time)).length;
+  const pct = Math.round(done/doses.length*100);
+  const R=26, C=2*Math.PI*R;
+  let html = `<div class="card"><div class="progress-wrap">
+    <svg class="ring" viewBox="0 0 64 64">
+      <circle cx="32" cy="32" r="${R}" fill="none" stroke="#e5e7eb" stroke-width="7"/>
+      <circle cx="32" cy="32" r="${R}" fill="none" stroke="#0d9488" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="${C}" stroke-dashoffset="${C*(1-done/doses.length)}" transform="rotate(-90 32 32)"/>
+      <text x="32" y="37" text-anchor="middle" font-size="14" font-weight="700" fill="#0f766e">${pct}%</text>
+    </svg>
+    <div><b style="font-size:17px">오늘 ${done} / ${doses.length}회 복용</b><br>
+    <span class="muted">${pct===100 ? "오늘 복용 완료! 잘하셨어요 🎉" : "드신 뒤 오른쪽 동그라미를 눌러 체크하세요."}</span></div>
+  </div></div>`;
+
+  // 시간대별 그룹
+  let curTime = null;
+  html += `<div class="card">`;
+  doses.forEach(d=>{
+    if(d.time!==curTime){ curTime=d.time; }
+    const chk = isChecked(dk,d.suppId,d.time);
+    html += `<div class="dose ${chk?"done":""}">
+      <span class="time-badge">${esc(d.time)}</span>
+      <span class="name">${esc(d.name)}${d.memo?`<br><span class="memo">${esc(d.memo)}</span>`:""}</span>
+      <button class="chk ${chk?"on":""}" onclick="toggleDose('${d.suppId}','${d.time}')" aria-label="복용 체크">${chk?"✓":""}</button>
+    </div>`;
+  });
+  html += `</div>`;
+  html += quickWarnCard();
+  return html;
+}
+/* 오늘 탭 하단: 분석에서 심각한 경고만 요약 */
+function quickWarnCard(){
+  const {overs, badCombos} = analyze();
+  if(overs.length===0 && badCombos.length===0) return "";
+  let html = `<div class="alert red"><b>⚠️ 확인이 필요해요</b>`;
+  overs.forEach(o=> html += `${esc(o.name)}이(가) 하루 상한을 넘어요 (${fmtAmt(o.total)}${o.unit} / 상한 ${fmtAmt(o.ul)}${o.unit}).<br>`);
+  badCombos.forEach(c=> html += `${esc(c.short)}<br>`);
+  html += `<span class="small">자세한 내용은 [분석] 탭에서 확인하세요.</span></div>`;
+  return html;
+}
+
+/* ================= 영양제 탭 ================= */
+function viewSupps(){
+  let html = `<button class="btn" onclick="editingId='new';render()" style="margin-top:0">+ 영양제 추가</button>`;
+  if(state.supps.length===0){
+    html += `<div class="card" style="margin-top:12px"><div class="empty"><div class="big">🧴</div>
+      먹고 있는 영양제를 등록해 보세요.<br>제품 뒷면 라벨의 함량을 보고 입력하면<br>과다 복용·조합 문제를 자동으로 확인해 드려요.</div></div>`;
+    return html;
+  }
+  html += `<div style="height:12px"></div>`;
+  state.supps.forEach(s=>{
+    const ings = Object.entries(s.ing||{}).map(([k,v])=>`${NUTRIENTS[k].name} ${fmtAmt(v)}${NUTRIENTS[k].unit}`).join(" · ");
+    html += `<div class="supp-item">
+      <div class="top">
+        <div><span class="nm">${esc(s.name)}</span><br><span class="times">⏰ ${s.times.join(", ")}</span></div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="icon-btn" onclick="editingId='${s.id}';render()">수정</button>
+          <button class="icon-btn" style="color:var(--red)" onclick="delSupp('${s.id}')">삭제</button>
+        </div>
+      </div>
+      ${ings?`<div class="ings">${esc(ings)}</div>`:""}
+      ${s.memo?`<div class="ings">📝 ${esc(s.memo)}</div>`:""}
+    </div>`;
+  });
+  return html;
+}
+function delSupp(id){
+  const s = state.supps.find(x=>x.id===id);
+  if(!confirm(`'${s.name}'을(를) 삭제할까요?`)) return;
+  state.supps = state.supps.filter(x=>x.id!==id);
+  save(); render();
+}
+
+/* ---- 등록/수정 폼 ---- */
+let formTimes = [], formIngs = []; // [{key, amount}]
+function viewEdit(){
+  const isNew = editingId==="new";
+  const s = isNew ? null : state.supps.find(x=>x.id===editingId);
+  if(!window._formInit || window._formInitFor!==editingId){
+    formTimes = s ? [...s.times] : ["08:00"];
+    formIngs = s ? Object.entries(s.ing||{}).map(([key,amount])=>({key,amount})) : [];
+    window._formInit = true; window._formInitFor = editingId;
+  }
+  const nutOptions = k => Object.entries(NUTRIENTS)
+    .map(([key,n])=>`<option value="${key}" ${key===k?"selected":""}>${n.name}</option>`).join("");
+  let html = `<div class="card"><h2>${isNew?"영양제 추가":"영양제 수정"}</h2>`;
+
+  if(isNew){
+    html += `<label class="fld">자주 먹는 영양제에서 고르기 (선택)</label>
+    <select id="presetSel" onchange="applyPreset(this.value)">
+      <option value="">— 직접 입력할게요 —</option>
+      ${PRESETS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join("")}
+    </select>
+    <div class="muted" style="margin-top:4px">고르면 일반적인 함량이 채워져요. <b>내 제품 라벨을 보고 숫자를 고쳐 쓰세요.</b></div>`;
+  }
+
+  html += `<label class="fld">제품 이름</label>
+  <input type="text" id="fName" value="${s?esc(s.name):""}" placeholder="예: ○○ 비타민D 2000IU">
+
+  <label class="fld">복용 시간 (여러 개 가능)</label>
+  <div class="row">
+    <input type="time" id="fTime" value="08:00">
+    <button class="btn sm" onclick="addTime()">추가</button>
+  </div>
+  <div id="timeChips">${renderTimeChips()}</div>
+
+  <label class="fld">성분 함량 (라벨의 '1일 섭취량당' 기준)</label>
+  <div id="ingRows">${formIngs.map((r,i)=>`
+    <div class="ing-row">
+      <select onchange="formIngs[${i}].key=this.value;render()">${nutOptions(r.key)}</select>
+      <input type="number" inputmode="decimal" value="${r.amount}" placeholder="함량"
+        onchange="formIngs[${i}].amount=parseFloat(this.value)||0">
+      <span class="unit">${NUTRIENTS[r.key].unit}</span>
+      <button class="del" onclick="formIngs.splice(${i},1);render()">✕</button>
+    </div>`).join("")}
+  </div>
+  <button class="btn gray" onclick="formIngs.push({key:'vitC',amount:0});persistName();render()">+ 성분 추가</button>
+  <div class="muted" style="margin-top:6px">💡 비타민D는 IU가 아니라 ㎍로 입력해요. 1000IU = 25㎍</div>
+
+  <label class="fld">메모 (선택)</label>
+  <input type="text" id="fMemo" value="${s&&s.memo?esc(s.memo):""}" placeholder="예: 식사 직후에 먹기">
+
+  <button class="btn" onclick="saveSupp()">저장</button>
+  <button class="btn gray" onclick="editingId=null;window._formInit=false;render()">취소</button>
+  </div>`;
+  return html;
+}
+function renderTimeChips(){
+  return formTimes.map((t,i)=>`<span class="chip">${t} <b onclick="formTimes.splice(${i},1);persistName();render()">✕</b></span>`).join("")
+    || `<span class="muted">시간을 추가해 주세요</span>`;
+}
+function persistName(){
+  // 폼 다시 그릴 때 입력 중이던 이름/메모 유지
+  const n = document.getElementById("fName"); if(n) window._tmpName = n.value;
+  const m = document.getElementById("fMemo"); if(m) window._tmpMemo = m.value;
+  // 성분 입력값도 유지
+  document.querySelectorAll("#ingRows .ing-row").forEach((row,i)=>{
+    const inp = row.querySelector("input"); if(inp && formIngs[i]) formIngs[i].amount = parseFloat(inp.value)||0;
+    const sel = row.querySelector("select"); if(sel && formIngs[i]) formIngs[i].key = sel.value;
+  });
+  setTimeout(()=>{
+    const n2 = document.getElementById("fName"); if(n2 && window._tmpName!==undefined) n2.value = window._tmpName;
+    const m2 = document.getElementById("fMemo"); if(m2 && window._tmpMemo!==undefined) m2.value = window._tmpMemo;
+  },0);
+}
+function addTime(){
+  const t = document.getElementById("fTime").value;
+  if(t && !formTimes.includes(t)){ formTimes.push(t); formTimes.sort(); }
+  persistName(); render();
+}
+function applyPreset(idx){
+  if(idx==="") return;
+  const p = PRESETS[+idx];
+  window._tmpName = p.name;
+  formIngs = Object.entries(p.ing).map(([key,amount])=>({key,amount}));
+  persistName(); render();
+  setTimeout(()=>{ const n = document.getElementById("fName"); if(n) n.value = p.name; },0);
+}
+function saveSupp(){
+  persistName();
+  const name = (document.getElementById("fName").value||"").trim();
+  const memo = (document.getElementById("fMemo").value||"").trim();
+  if(!name){ alert("제품 이름을 입력해 주세요."); return; }
+  if(formTimes.length===0){ alert("복용 시간을 1개 이상 추가해 주세요."); return; }
+  const ing = {};
+  formIngs.forEach(r=>{ if(r.amount>0) ing[r.key] = (ing[r.key]||0) + r.amount; });
+  if(editingId==="new"){
+    state.supps.push({id:uid(), name, times:[...formTimes].sort(), ing, memo});
+  }else{
+    const s = state.supps.find(x=>x.id===editingId);
+    Object.assign(s,{name, times:[...formTimes].sort(), ing, memo});
+  }
+  window._formInit=false; window._tmpName=undefined; window._tmpMemo=undefined;
+  editingId=null; save(); render();
+}
+
+/* ================= 분석 탭 ================= */
+function analyze(){
+  // 총합 계산
+  const totals = {};
+  state.supps.forEach(s=> Object.entries(s.ing||{}).forEach(([k,v])=>{ totals[k]=(totals[k]||0)+v; }));
+  const rows = Object.entries(totals).map(([k,total])=>{
+    const n = NUTRIENTS[k];
+    let status = "ok";
+    if(n.ul){
+      if(total > n.ul) status = "over";
+      else if(total >= n.ul*0.8) status = "warn";
+    }
+    return {key:k, name:n.name, unit:n.unit, total, rda:n.rda, ul:n.ul, tip:n.tip, status};
+  });
+  rows.sort((a,b)=> (b.status==="over")-(a.status==="over") || (b.status==="warn")-(a.status==="warn"));
+  const overs = rows.filter(r=>r.status==="over");
+
+  // 조합 분석
+  const has = key => state.supps.filter(s=> s.ing && s.ing[key]>0);
+  const goodCombos=[], badCombos=[], cautions=[];
+  COMBO_RULES.forEach(rule=>{
+    const A = has(rule.a), B = has(rule.b);
+    if(A.length===0 || B.length===0) return;
+    // 같은 제품 하나에만 함께 든 경우: 제조사가 배합한 것이므로 경고 수위 낮춤
+    const separate = A.some(sa=> B.some(sb=> sa.id!==sb.id));
+    // 같은 시간에 겹치는지
+    let sameTime = false;
+    A.forEach(sa=> B.forEach(sb=>{
+      if(sa.id!==sb.id && sa.times.some(t=> sb.times.includes(t))) sameTime = true;
+    }));
+    const aName = NUTRIENTS[rule.a].name, bName = NUTRIENTS[rule.b].name;
+    const item = {rule, aName, bName, sameTime,
+      short:`${aName} + ${bName} 조합을 확인해 주세요.`};
+    if(rule.type==="good") goodCombos.push(item);
+    else if(!separate){ /* 한 제품 안 배합은 안내 생략 */ }
+    else if(rule.type==="bad"){ if(sameTime) badCombos.push(item); else cautions.push(item); }
+    else cautions.push(item);
+  });
+  return {rows, overs, goodCombos, badCombos, cautions};
+}
+function viewAnalysis(){
+  if(state.supps.length===0){
+    return `<div class="card"><div class="empty"><div class="big">🔍</div>
+      영양제를 등록하면 하루 총 섭취량이<br>적정한지, 조합은 괜찮은지 분석해 드려요.</div></div>`;
+  }
+  const {rows, badCombos, cautions, goodCombos} = analyze();
+  let html = "";
+
+  // 경고 카드
+  badCombos.forEach(c=> html += `<div class="alert red"><b>⚠️ ${c.aName} + ${c.bName} — 같은 시간에 드시고 있어요</b>${esc(c.rule.msg)}</div>`);
+  cautions.forEach(c=> html += `<div class="alert amber"><b>💡 ${c.aName} + ${c.bName}</b>${esc(c.rule.msg)}</div>`);
+  goodCombos.forEach(c=> html += `<div class="alert green"><b>✅ ${c.aName} + ${c.bName}</b>${esc(c.rule.msg)}</div>`);
+  if(badCombos.length+cautions.length===0 && rows.every(r=>r.status==="ok")){
+    html = `<div class="alert green"><b>✅ 좋아요!</b>등록하신 영양제들의 함량과 조합에서 특별한 문제를 찾지 못했어요.</div>` + html;
+  }
+
+  // 함량 표
+  html += `<div class="card"><h2>하루 총 섭취량</h2>
+  <div class="muted" style="margin-bottom:14px">등록한 모든 영양제를 합친 양이에요. 막대가 <b style="color:var(--red)">빨간색</b>이면 상한 섭취량을 넘은 거예요.</div>`;
+  if(rows.length===0) html += `<div class="muted">성분 함량이 입력된 영양제가 없어요. [영양제] 탭에서 성분을 입력해 보세요.</div>`;
+  rows.forEach(r=>{
+    const denom = r.ul || r.rda*3; // 상한 없으면 권장량 3배를 눈금 최대로
+    const pct = Math.min(100, r.total/denom*100);
+    const tag = r.status==="over" ? `<span class="tag over">상한 초과</span>`
+              : r.status==="warn" ? `<span class="tag warn">상한 근접</span>`
+              : `<span class="tag ok">적정</span>`;
+    html += `<div class="nut-row">
+      <div class="top"><span>${esc(r.name)}${r.ul?tag:""}</span>
+      <span class="val">${fmtAmt(r.total)}${r.unit} ${r.ul?`/ 상한 ${fmtAmt(r.ul)}${r.unit}`:`(권장 ${fmtAmt(r.rda)}${r.unit})`}</span></div>
+      <div class="bar"><i class="${r.status==="over"?"over":r.status==="warn"?"warn":""}" style="width:${pct}%"></i></div>
+      ${r.tip?`<div class="muted" style="font-size:11.5px;margin-top:2px">${esc(r.tip)}</div>`:""}
+    </div>`;
+  });
+  html += `</div>
+  <div class="footer-note">※ 기준: 2020 한국인 영양소 섭취기준(성인) 및 식약처 건강기능식품 기준.<br>
+  이 분석은 참고용이며 의학적 진단이 아니에요. 임신·수유 중이거나 질환이 있거나 약을 복용 중이라면 꼭 의사·약사와 상의하세요.</div>`;
+  return html;
+}
+
+/* ================= 달력 탭 ================= */
+function dayStats(dk){
+  const doses = dosesForDay(); // 현재 등록 기준
+  if(doses.length===0) return null;
+  const rec = state.records[dk]||{};
+  const done = doses.filter(d=> rec[d.suppId+"@"+d.time]).length;
+  return {done, total:doses.length};
+}
+function moveMonth(delta){ calCursor.setMonth(calCursor.getMonth()+delta); render(); }
+function selectDay(dk){ calSelected = dk; render(); }
+function viewCalendar(){
+  const y = calCursor.getFullYear(), m = calCursor.getMonth();
+  const first = new Date(y,m,1), startWd = first.getDay(), days = new Date(y,m+1,0).getDate();
+  const tk = todayKey();
+  let html = `<div class="card">
+  <div class="cal-head">
+    <button onclick="moveMonth(-1)">‹</button><b>${y}년 ${m+1}월</b><button onclick="moveMonth(1)">›</button>
+  </div>
+  <div class="cal-grid">`;
+  ["일","월","화","수","목","금","토"].forEach(w=> html += `<div class="wd">${w}</div>`);
+  for(let i=0;i<startWd;i++) html += `<div></div>`;
+  for(let d=1; d<=days; d++){
+    const dk = dateKey(new Date(y,m,d));
+    const st = dk<=tk ? dayStats(dk) : null;
+    let dot = "";
+    if(st && st.total>0){
+      const color = st.done===st.total ? "var(--green)" : st.done>0 ? "var(--amber)" : "#d1d5db";
+      dot = `<span class="dot" style="background:${color}"></span>`;
+    }
+    html += `<div class="cal-cell ${dk===tk?"today":""} ${dk===calSelected?"sel":""}" onclick="selectDay('${dk}')">${d}${dot}</div>`;
+  }
+  html += `</div>
+  <div class="legend"><span><i style="background:var(--green)"></i>모두 복용</span>
+  <span><i style="background:var(--amber)"></i>일부 복용</span>
+  <span><i style="background:#d1d5db"></i>복용 안 함</span></div></div>`;
+
+  // 선택한 날 상세
+  const st = dayStats(calSelected);
+  const selDate = new Date(calSelected+"T00:00:00");
+  html += `<div class="card"><h2>${selDate.getMonth()+1}월 ${selDate.getDate()}일 기록</h2>`;
+  if(!st || calSelected>tk){ html += `<div class="muted">기록이 없어요.</div>`; }
+  else{
+    const rec = state.records[calSelected]||{};
+    dosesForDay().forEach(d=>{
+      const ok = !!rec[d.suppId+"@"+d.time];
+      html += `<div class="dose ${ok?"done":""}">
+        <span class="time-badge">${d.time}</span>
+        <span class="name">${esc(d.name)}</span>
+        <span style="font-size:18px">${ok?"✅":"➖"}</span></div>`;
+    });
+    html += `<div class="muted" style="margin-top:8px">${st.done} / ${st.total}회 복용</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+/* ================= 설정 탭 ================= */
+function viewSettings(){
+  return `
+  <div class="card"><h2>🔔 아이폰에 알람 등록하기</h2>
+  <p class="small" style="margin-bottom:8px">
+  아이폰은 웹앱이 스스로 알람을 울릴 수 없어요. 대신 아래 버튼을 누르면
+  <b>아이폰 기본 캘린더에 매일 반복되는 알림 일정</b>이 만들어져요.
+  등록한 모든 영양제의 시간에 맞춰 매일 알림이 와요.</p>
+  <button class="btn" onclick="exportICS()">📅 캘린더 알람 파일 만들기</button>
+  <details><summary>사용 방법 (처음 한 번만)</summary><ol>
+    <li>위 버튼을 누르면 파일이 다운로드돼요.</li>
+    <li>아이폰에서 다운로드된 파일을 열어요. (사파리 오른쪽 위 ↓ 아이콘 → 파일 누르기)</li>
+    <li>"모두 추가"를 누르면 캘린더에 매일 알람이 등록돼요.</li>
+    <li>영양제나 시간을 바꾸면, 캘린더에서 이전 일정을 지우고 이 버튼을 다시 눌러 새로 추가해 주세요.</li>
+  </ol></details>
+  </div>
+
+  <div class="card"><h2>📲 홈 화면에 앱으로 설치하기</h2>
+  <details><summary>설치 방법 보기</summary><ol>
+    <li>사파리에서 이 페이지를 열어요.</li>
+    <li>화면 아래(또는 위) <b>공유 버튼</b> <span style="font-size:17px">⎋</span>을 눌러요.</li>
+    <li><b>"홈 화면에 추가"</b>를 눌러요.</li>
+    <li>홈 화면에 💊 아이콘이 생겨요. 앞으로는 이 아이콘으로 실행하세요!</li>
+  </ol></details>
+  </div>
+
+  <div class="card"><h2>💾 데이터 백업</h2>
+  <p class="small" style="margin-bottom:4px">기록은 이 기기(브라우저) 안에만 저장돼요. 가끔 백업해 두면 안전해요.</p>
+  <button class="btn outline" onclick="exportData()">백업 파일 내려받기</button>
+  <button class="btn outline" onclick="document.getElementById('importFile').click()">백업 파일 불러오기</button>
+  <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(this)">
+  <button class="btn danger" onclick="resetAll()">모든 데이터 지우기</button>
+  </div>
+
+  <div class="footer-note">영양제 알람 v1.0<br>
+  이 앱의 함량·조합 정보는 일반적인 참고용이에요.<br>건강 상태에 따른 판단은 의사·약사와 상의하세요.</div>`;
+}
+
+/* ---- 캘린더(.ics) 알람 파일 ---- */
+function exportICS(){
+  if(state.supps.length===0){ alert("먼저 [영양제] 탭에서 영양제를 등록해 주세요."); return; }
+  const pad = n => String(n).padStart(2,"0");
+  const now = new Date();
+  const stamp = now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"T"+pad(now.getHours())+pad(now.getMinutes())+"00";
+  let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//NutriAlarm//KO\r\nCALSCALE:GREGORIAN\r\n";
+  state.supps.forEach(s=> s.times.forEach(t=>{
+    const [hh,mm] = t.split(":");
+    const dtstart = now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"T"+hh+mm+"00";
+    ics += "BEGIN:VEVENT\r\n"
+      + "UID:"+s.id+"-"+t.replace(":","")+"@nutrialarm\r\n"
+      + "DTSTAMP:"+stamp+"\r\n"
+      + "DTSTART:"+dtstart+"\r\n"
+      + "RRULE:FREQ=DAILY\r\n"
+      + "SUMMARY:💊 "+s.name.replace(/[,;\\]/g," ")+" 드실 시간이에요\r\n"
+      + "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:영양제 알람\r\nTRIGGER:PT0M\r\nEND:VALARM\r\n"
+      + "END:VEVENT\r\n";
+  }));
+  ics += "END:VCALENDAR\r\n";
+  downloadFile("영양제알람.ics", ics, "text/calendar");
+}
+function exportData(){
+  downloadFile("영양제알람_백업_"+todayKey()+".json", JSON.stringify(state,null,2), "application/json");
+}
+function importData(input){
+  const f = input.files[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      if(!Array.isArray(data.supps)) throw new Error();
+      if(!confirm("백업을 불러오면 현재 데이터를 덮어써요. 계속할까요?")) return;
+      state = data; save(); render(); alert("불러오기 완료!");
+    }catch(e){ alert("백업 파일이 아니거나 손상된 파일이에요."); }
+  };
+  reader.readAsText(f);
+  input.value = "";
+}
+function resetAll(){
+  if(!confirm("정말 모든 영양제와 기록을 지울까요? 되돌릴 수 없어요.")) return;
+  state = {supps:[], records:{}}; save(); render();
+}
+function downloadFile(name, content, type){
+  const blob = new Blob(["﻿"+content], {type: type+";charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* ================= 앱이 열려 있는 동안 울리는 알람 ================= */
+let lastAlerted = "";
+function checkAlarm(){
+  const now = new Date();
+  const hhmm = String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
+  if(lastAlerted === hhmm) return;
+  const dk = todayKey();
+  const due = dosesForDay().filter(d=> d.time===hhmm && !isChecked(dk,d.suppId,d.time));
+  if(due.length===0) return;
+  lastAlerted = hhmm;
+  const names = due.map(d=>d.name).join(", ");
+  showBanner("💊 영양제 드실 시간이에요!", names);
+  beep();
+  if(navigator.vibrate) navigator.vibrate([300,150,300]);
+  if("Notification" in window && Notification.permission==="granted"){
+    try{ new Notification("💊 영양제 드실 시간이에요!", {body:names}); }catch(e){}
+  }
+  if(tab==="today") render();
+}
+function showBanner(title, body){
+  const b = document.getElementById("alarmBanner");
+  b.innerHTML = `<b>${esc(title)}</b>${esc(body)}<div class="small" style="opacity:.85;margin-top:4px">누르면 닫혀요</div>`;
+  b.style.display = "block";
+  setTimeout(hideBanner, 60000);
+}
+function hideBanner(){ document.getElementById("alarmBanner").style.display = "none"; }
+function beep(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    [0,0.3,0.6].forEach(t0=>{
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880; o.type = "sine";
+      g.gain.setValueAtTime(0.001, ctx.currentTime+t0);
+      g.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime+t0+0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+t0+0.25);
+      o.start(ctx.currentTime+t0); o.stop(ctx.currentTime+t0+0.3);
+    });
+  }catch(e){}
+}
+setInterval(checkAlarm, 15000);
+
+/* ================= 시작 ================= */
+load();
+render();
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+</script>
+</body>
+</html>

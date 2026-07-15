@@ -1,0 +1,14 @@
+{
+  "name": "영양제 알람",
+  "short_name": "영양제 알람",
+  "description": "영양제 복용 알림, 체크, 함량 분석 앱",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0d9488",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
