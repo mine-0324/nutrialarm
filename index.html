@@ -406,6 +406,9 @@ function viewEdit(){
   <div id="timeChips">${renderTimeChips()}</div>
 
   <label class="fld">성분 함량 (라벨의 '1일 섭취량당' 기준)</label>
+  <button class="btn outline" style="margin:0 0 10px" onclick="document.getElementById('photoInput').click()">📷 라벨 사진으로 자동 입력</button>
+  <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="ocrPhoto(this)">
+  <div id="ocrStatus" class="muted" style="margin-bottom:8px"></div>
   <div id="ingRows">${formIngs.map((r,i)=>`
     <div class="ing-row">
       <select onchange="formIngs[${i}].key=this.value;render()">${nutOptions(r.key)}</select>
@@ -697,6 +700,133 @@ function downloadFile(name, content, type){
   a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click();
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* ================= 라벨 사진 자동 인식 (OCR) =================
+   사진 속 글자를 휴대폰 안에서 직접 읽어요. 서버로 전송하지 않아요. */
+const OCR_ALIASES = [ // 긴 이름을 먼저 검사 (B12가 B1로 잘못 잡히지 않도록)
+  {key:"b12",        re:/비타민\s*B\s*12|\bB12\b/i},
+  {key:"b1",         re:/비타민\s*B\s*1(?![0-9])|티아민/i},
+  {key:"b2",         re:/비타민\s*B\s*2(?![0-9])|리보플라빈/i},
+  {key:"b6",         re:/비타민\s*B\s*6|\bB6\b/i},
+  {key:"vitA",       re:/비타민\s*A/i},
+  {key:"vitD",       re:/비타민\s*[D0O]\s*3?(?=[\s\d(]|$)/i},
+  {key:"vitE",       re:/비타민\s*E/i},
+  {key:"vitK",       re:/비타민\s*K\s*[12]?/i},
+  {key:"vitC",       re:/비타민\s*[Cㅇ](?=[\s\d(]|$)/i},
+  {key:"niacin",     re:/니아신|나이아신/},
+  {key:"folate",     re:/엽산/},
+  {key:"biotin",     re:/비오틴/},
+  {key:"pantothenic",re:/판토텐산/},
+  {key:"calcium",    re:/칼슘/},
+  {key:"magnesium",  re:/마그네[슘슈숨]/},
+  {key:"iron",       re:/철(?:분)?\s*(?=[\d(])/},
+  {key:"zinc",       re:/아연/},
+  {key:"copper",     re:/구리/},
+  {key:"selenium",   re:/셀레늄|셀렌/},
+  {key:"omega3",     re:/EPA|DHA|오메가/i},
+  {key:"lutein",     re:/루테인/},
+  {key:"coq10",      re:/코엔자임|코큐텐/i},
+  {key:"milkthistle",re:/실리마린|밀크씨슬|밀크시슬/},
+  {key:"probiotics", re:/유산균|프로바이오틱스/},
+];
+const OCR_NUM = /([\d][\d,]*(?:\.\d+)?)\s*(㎎|mg|밀리그램|㎍|ug|µg|μg|pg|yg|mcg|마이크로그램|IU|억)/i;
+/* pg·yg = 사진에서 ㎍(µg)가 잘못 읽힌 흔한 형태 */
+function ocrToUnit(key, val, unit){
+  // 라벨의 단위를 이 앱이 쓰는 단위(㎎/㎍/억)로 변환
+  const target = NUTRIENTS[key].unit;
+  const u = unit.toLowerCase();
+  let mg = null;
+  if(u==="㎎"||u==="mg"||u==="밀리그램") mg = val;
+  else if(u==="㎍"||u==="ug"||u==="µg"||u==="μg"||u==="pg"||u==="yg"||u==="mcg"||u==="마이크로그램") mg = val/1000;
+  else if(u==="iu"){
+    if(key==="vitD") mg = (val/40)/1000;        // 40IU = 1㎍
+    else if(key==="vitE") mg = val*0.67;         // 1IU ≈ 0.67㎎
+    else if(key==="vitA") mg = (val*0.3)/1000;   // 1IU ≈ 0.3㎍
+    else return null;
+  }
+  else if(u==="억") return key==="probiotics" ? val : null;
+  if(mg===null) return null;
+  const out = target==="㎎" ? mg : target==="㎍" ? mg*1000 : null;
+  return out===null ? null : Math.round(out*100)/100;
+}
+function parseNutritionText(text){
+  const found = {};
+  text.split(/\n+/).forEach(line=>{
+    OCR_ALIASES.forEach(a=>{
+      const m = line.match(a.re);
+      if(!m) return;
+      const rest = line.slice(m.index + m[0].length);
+      const num = rest.match(OCR_NUM) || line.match(OCR_NUM);
+      if(!num) return;
+      const val = parseFloat(num[1].replace(/,/g,""));
+      if(!(val>0)) return;
+      const conv = ocrToUnit(a.key, val, num[2]);
+      if(conv===null || conv<=0) return;
+      // 숫자를 잘못 읽은 것으로 보이는 터무니없는 값은 버림 (상한의 8배 초과)
+      const n = NUTRIENTS[a.key];
+      if(n.ul && conv > n.ul*8) return;
+      if(a.key==="omega3" && found.omega3){ found.omega3 += conv; } // EPA·DHA 줄이 따로면 합산
+      else if(found[a.key]===undefined) found[a.key] = conv;
+    });
+  });
+  return Object.entries(found).map(([key,amount])=>({key,amount}));
+}
+function ocrSetStatus(t){ const el = document.getElementById("ocrStatus"); if(el) el.innerHTML = t; }
+function ocrLoadImage(file){
+  return new Promise((res,rej)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>res(img); img.onerror = rej; img.src = url;
+  });
+}
+function ocrDownscale(img, max){
+  const sc = Math.min(1, max/Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+let tessLoading = null;
+function loadTesseract(){
+  if(window.Tesseract) return Promise.resolve();
+  if(!tessLoading) tessLoading = new Promise((res,rej)=>{
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload = res; s.onerror = ()=>{ tessLoading=null; rej(new Error("network")); };
+    document.head.appendChild(s);
+  });
+  return tessLoading;
+}
+async function ocrPhoto(input){
+  const file = input.files[0]; input.value = "";
+  if(!file) return;
+  try{
+    ocrSetStatus("사진 준비 중…");
+    const img = await ocrLoadImage(file);
+    const canvas = ocrDownscale(img, 2000);
+    ocrSetStatus("글자 인식 도구를 내려받는 중… (처음 한 번만, 조금 걸려요)");
+    await loadTesseract();
+    const worker = await Tesseract.createWorker("kor+eng", 1, {
+      logger: m=>{ if(m.status==="recognizing text") ocrSetStatus("글자를 읽는 중… "+Math.round(m.progress*100)+"%"); }
+    });
+    const {data} = await worker.recognize(canvas);
+    await worker.terminate();
+    const found = parseNutritionText(data.text||"");
+    if(found.length===0){
+      ocrSetStatus("⚠️ 성분을 찾지 못했어요. 라벨의 <b>영양·기능 정보 표</b>가 화면에 크고 반듯하게 나오도록 다시 찍어보세요.");
+      return;
+    }
+    persistName();
+    found.forEach(f=>{
+      const i = formIngs.findIndex(r=>r.key===f.key);
+      if(i>=0) formIngs[i].amount = f.amount; else formIngs.push(f);
+    });
+    render();
+    setTimeout(()=>ocrSetStatus("✅ <b>"+found.length+"개 성분을 읽었어요!</b> 아래 숫자가 라벨과 같은지 꼭 확인해 주세요."), 0);
+  }catch(e){
+    ocrSetStatus("⚠️ 사진을 읽지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.");
+  }
 }
 
 /* ================= 앱이 열려 있는 동안 울리는 알람 ================= */
