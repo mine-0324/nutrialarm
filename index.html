@@ -704,31 +704,31 @@ function downloadFile(name, content, type){
 
 /* ================= 라벨 사진 자동 인식 (OCR) =================
    사진 속 글자를 휴대폰 안에서 직접 읽어요. 서버로 전송하지 않아요. */
-const OCR_ALIASES = [ // 긴 이름을 먼저 검사 (B12가 B1로 잘못 잡히지 않도록)
-  {key:"b12",        re:/비타민\s*B\s*12|\bB12\b/i},
-  {key:"b1",         re:/비타민\s*B\s*1(?![0-9])|티아민/i},
-  {key:"b2",         re:/비타민\s*B\s*2(?![0-9])|리보플라빈/i},
-  {key:"b6",         re:/비타민\s*B\s*6|\bB6\b/i},
-  {key:"vitA",       re:/비타민\s*A/i},
-  {key:"vitD",       re:/비타민\s*[D0O]\s*3?(?=[\s\d(]|$)/i},
-  {key:"vitE",       re:/비타민\s*E/i},
-  {key:"vitK",       re:/비타민\s*K\s*[12]?/i},
-  {key:"vitC",       re:/비타민\s*[Cㅇ](?=[\s\d(]|$)/i},
-  {key:"niacin",     re:/니아신|나이아신/},
-  {key:"folate",     re:/엽산/},
-  {key:"biotin",     re:/비오틴/},
-  {key:"pantothenic",re:/판토텐산/},
-  {key:"calcium",    re:/칼슘/},
-  {key:"magnesium",  re:/마그네[슘슈숨]/},
-  {key:"iron",       re:/철(?:분)?\s*(?=[\d(])/},
-  {key:"zinc",       re:/아연/},
-  {key:"copper",     re:/구리/},
-  {key:"selenium",   re:/셀레늄|셀렌/},
-  {key:"omega3",     re:/EPA|DHA|오메가/i},
-  {key:"lutein",     re:/루테인/},
-  {key:"coq10",      re:/코엔자임|코큐텐/i},
-  {key:"milkthistle",re:/실리마린|밀크씨슬|밀크시슬/},
-  {key:"probiotics", re:/유산균|프로바이오틱스/},
+const OCR_ALIASES = [ // 긴 이름을 먼저 검사 (B12가 B1로 잘못 잡히지 않도록). 한국어·영어 라벨 모두 지원
+  {key:"b12",        re:/(비타민|vitamin)\s*B\s*12|\bB12\b|cobalamin/i},
+  {key:"b1",         re:/(비타민|vitamin)\s*B\s*1(?![0-9])|티아민|thiamin/i},
+  {key:"b2",         re:/(비타민|vitamin)\s*B\s*2(?![0-9])|리보플라빈|riboflavin/i},
+  {key:"b6",         re:/(비타민|vitamin)\s*B\s*6|\bB6\b|pyridoxine/i},
+  {key:"vitA",       re:/(비타민|vitamin)\s*A(?![a-z0-9])/i},
+  {key:"vitD",       re:/(비타민|vitamin)\s*[D0O]\s*3?(?=[\s\d(]|$)|cholecalciferol/i},
+  {key:"vitE",       re:/(비타민|vitamin)\s*E(?![a-z0-9])|tocopherol\s*(?=[\d(])/i},
+  {key:"vitK",       re:/(비타민|vitamin)\s*K\s*[12]?(?![a-z0-9])/i},
+  {key:"vitC",       re:/(비타민|vitamin)\s*[Cㅇ](?=[\s\d(]|$)|ascorbic/i},
+  {key:"niacin",     re:/니아신|나이아신|niacin/i},
+  {key:"folate",     re:/엽산|folate|folic/i},
+  {key:"biotin",     re:/비오틴|biotin/i},
+  {key:"pantothenic",re:/판토텐산|pantothenic/i},
+  {key:"calcium",    re:/칼슘|calcium/i},
+  {key:"magnesium",  re:/마그네[슘슈숨]|magnesium/i},
+  {key:"iron",       re:/철(?:분)?\s*(?=[\d(])|\biron\b/i},
+  {key:"zinc",       re:/아연|zinc/i},
+  {key:"copper",     re:/구리|copper/i},
+  {key:"selenium",   re:/셀레늄|셀렌|selenium/i},
+  {key:"omega3",     re:/EPA|DHA|오메가|omega/i},
+  {key:"lutein",     re:/루테인|lutein/i},
+  {key:"coq10",      re:/코엔자임|코큐텐|coq\s*10|coenzyme/i},
+  {key:"milkthistle",re:/실리마린|밀크씨슬|밀크시슬|silymarin|milk\s*thistle/i},
+  {key:"probiotics", re:/유산균|프로바이오틱스|probiotic|lactobacillus/i},
 ];
 const OCR_NUM = /([\d][\d,]*(?:\.\d+)?)\s*(㎎|mg|밀리그램|㎍|ug|µg|μg|pg|yg|mcg|마이크로그램|IU|억)/i;
 /* pg·yg = 사진에서 ㎍(µg)가 잘못 읽힌 흔한 형태 */
@@ -752,6 +752,7 @@ function ocrToUnit(key, val, unit){
 }
 function parseNutritionText(text){
   const found = {};
+  let epaDhaSum = 0, omegaTotal = 0;
   text.split(/\n+/).forEach(line=>{
     OCR_ALIASES.forEach(a=>{
       const m = line.match(a.re);
@@ -766,10 +767,16 @@ function parseNutritionText(text){
       // 숫자를 잘못 읽은 것으로 보이는 터무니없는 값은 버림 (상한의 8배 초과)
       const n = NUTRIENTS[a.key];
       if(n.ul && conv > n.ul*8) return;
-      if(a.key==="omega3" && found.omega3){ found.omega3 += conv; } // EPA·DHA 줄이 따로면 합산
+      if(a.key==="omega3"){
+        // "Total Omega-3" 합계 줄과 EPA·DHA 개별 줄이 같이 있으면 중복으로 더하지 않음
+        if(/EPA|DHA/i.test(line) && !/omega|오메가/i.test(line)) epaDhaSum += conv;
+        else omegaTotal = Math.max(omegaTotal, conv);
+      }
       else if(found[a.key]===undefined) found[a.key] = conv;
     });
   });
+  const omega = epaDhaSum > 0 ? epaDhaSum : omegaTotal; // EPA+DHA 합이 식약처 기준이라 우선
+  if(omega > 0) found.omega3 = omega;
   return Object.entries(found).map(([key,amount])=>({key,amount}));
 }
 function ocrSetStatus(t){ const el = document.getElementById("ocrStatus"); if(el) el.innerHTML = t; }
