@@ -141,6 +141,17 @@
     box-shadow:0 4px 20px rgba(0,0,0,.25); font-size:15px;
   }
   #alarmBanner b{display:block; font-size:17px; margin-bottom:2px}
+  /* ---- 사진 영역 선택 ---- */
+  #cropOverlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.93); z-index:200; display:none;
+    flex-direction:column; padding:14px;
+    padding-top:calc(14px + env(safe-area-inset-top));
+    padding-bottom:calc(14px + env(safe-area-inset-bottom));
+  }
+  #cropOverlay .crop-head{color:#fff; font-size:14.5px; text-align:center; margin-bottom:10px; line-height:1.5}
+  #cropBox{flex:1; display:flex; align-items:center; justify-content:center; min-height:0}
+  #cropCanvas{max-width:100%; max-height:100%; touch-action:none; border-radius:8px}
+  .crop-btns .btn{margin-top:8px}
   .empty{
     text-align:center; padding:36px 16px; color:var(--sub); font-size:14px;
   }
@@ -155,6 +166,15 @@
 <body>
 
 <div id="alarmBanner" onclick="hideBanner()"></div>
+<div id="cropOverlay">
+  <div class="crop-head">📷 <b>성분 표 부분만</b> 손가락으로 문질러서<br>네모로 선택해 주세요 (더 정확해져요)</div>
+  <div id="cropBox"><canvas id="cropCanvas"></canvas></div>
+  <div class="crop-btns">
+    <button class="btn" onclick="cropConfirm(false)">✅ 선택한 부분 읽기</button>
+    <button class="btn gray" onclick="cropConfirm(true)">선택 없이 사진 전체로 읽기</button>
+    <button class="btn gray" onclick="closeCrop()">취소</button>
+  </div>
+</div>
 <header>
   <h1>💊 영양제 알람</h1>
   <div class="date" id="headerDate"></div>
@@ -710,7 +730,7 @@ const OCR_ALIASES = [ // 긴 이름을 먼저 검사 (B12가 B1로 잘못 잡히
   {key:"b2",         re:/(비타민|vitamin)\s*B\s*2(?![0-9])|리보플라빈|riboflavin/i},
   {key:"b6",         re:/(비타민|vitamin)\s*B\s*6|\bB6\b|pyridoxine/i},
   {key:"vitA",       re:/(비타민|vitamin)\s*A(?![a-z0-9])/i},
-  {key:"vitD",       re:/(비타민|vitamin)\s*[D0O]\s*3?(?=[\s\d(]|$)|cholecalciferol/i},
+  {key:"vitD",       re:/(비타민|vitamin)\s*[D0O]\s*3?(?=[\s\d(]|$)|cholecalcifero|D\s*3(?=\s*[\d(])/i},
   {key:"vitE",       re:/(비타민|vitamin)\s*E(?![a-z0-9])|tocopherol\s*(?=[\d(])/i},
   {key:"vitK",       re:/(비타민|vitamin)\s*K\s*[12]?(?![a-z0-9])/i},
   {key:"vitC",       re:/(비타민|vitamin)\s*[Cㅇ](?=[\s\d(]|$)|ascorbic/i},
@@ -724,21 +744,21 @@ const OCR_ALIASES = [ // 긴 이름을 먼저 검사 (B12가 B1로 잘못 잡히
   {key:"zinc",       re:/아연|zinc/i},
   {key:"copper",     re:/구리|copper/i},
   {key:"selenium",   re:/셀레늄|셀렌|selenium/i},
-  {key:"omega3",     re:/EPA|DHA|오메가|omega/i},
+  {key:"omega3",     re:/EPA|DHA|오메가|omega|cos[oa]penta|cosahex/i}, /* cos*: EPA·DHA 학명이 흐릿하게 읽힌 형태 */
   {key:"lutein",     re:/루테인|lutein/i},
   {key:"coq10",      re:/코엔자임|코큐텐|coq\s*10|coenzyme/i},
   {key:"milkthistle",re:/실리마린|밀크씨슬|밀크시슬|silymarin|milk\s*thistle/i},
   {key:"probiotics", re:/유산균|프로바이오틱스|probiotic|lactobacillus/i},
 ];
-const OCR_NUM = /([\d][\d,]*(?:\.\d+)?)\s*(㎎|mg|밀리그램|㎍|ug|µg|μg|pg|yg|mcg|마이크로그램|IU|억)/i;
-/* pg·yg = 사진에서 ㎍(µg)가 잘못 읽힌 흔한 형태 */
+const OCR_NUM = /([\d][\d,]*(?:\.\d+)?)\s*(㎎|mg|밀리그램|㎍|ug|µg|μg|pg|yg|mcg|meq|mcq|마이크로그램|IU|억)/i;
+/* pg·yg·meq·mcq = 사진에서 ㎍(µg)·mcg가 잘못 읽힌 흔한 형태 */
 function ocrToUnit(key, val, unit){
   // 라벨의 단위를 이 앱이 쓰는 단위(㎎/㎍/억)로 변환
   const target = NUTRIENTS[key].unit;
   const u = unit.toLowerCase();
   let mg = null;
   if(u==="㎎"||u==="mg"||u==="밀리그램") mg = val;
-  else if(u==="㎍"||u==="ug"||u==="µg"||u==="μg"||u==="pg"||u==="yg"||u==="mcg"||u==="마이크로그램") mg = val/1000;
+  else if(u==="㎍"||u==="ug"||u==="µg"||u==="μg"||u==="pg"||u==="yg"||u==="mcg"||u==="meq"||u==="mcq"||u==="마이크로그램") mg = val/1000;
   else if(u==="iu"){
     if(key==="vitD") mg = (val/40)/1000;        // 40IU = 1㎍
     else if(key==="vitE") mg = val*0.67;         // 1IU ≈ 0.67㎎
@@ -753,12 +773,13 @@ function ocrToUnit(key, val, unit){
 function parseNutritionText(text){
   const found = {};
   let epaDhaSum = 0, omegaTotal = 0;
+  const dejoin = s => s.replace(/(\d)\s+(?=\d)/g, "$1"); // "1 50mg"처럼 띄어 읽힌 숫자 붙이기
   text.split(/\n+/).forEach(line=>{
     OCR_ALIASES.forEach(a=>{
       const m = line.match(a.re);
       if(!m) return;
-      const rest = line.slice(m.index + m[0].length);
-      const num = rest.match(OCR_NUM) || line.match(OCR_NUM);
+      const rest = dejoin(line.slice(m.index + m[0].length));
+      const num = rest.match(OCR_NUM) || dejoin(line).match(OCR_NUM);
       if(!num) return;
       const val = parseFloat(num[1].replace(/,/g,""));
       if(!(val>0)) return;
@@ -769,7 +790,7 @@ function parseNutritionText(text){
       if(n.ul && conv > n.ul*8) return;
       if(a.key==="omega3"){
         // "Total Omega-3" 합계 줄과 EPA·DHA 개별 줄이 같이 있으면 중복으로 더하지 않음
-        if(/EPA|DHA/i.test(line) && !/omega|오메가/i.test(line)) epaDhaSum += conv;
+        if(/EPA|DHA|cos[oa]penta|cosahex/i.test(line) && !/omega|오메가/i.test(line)) epaDhaSum += conv;
         else omegaTotal = Math.max(omegaTotal, conv);
       }
       else if(found[a.key]===undefined) found[a.key] = conv;
@@ -794,6 +815,172 @@ function ocrDownscale(img, max){
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
   return c;
 }
+/* 사진 보정: 흑백 변환 + 명암 강화. invert=true면 검은 바탕 라벨용으로 색 반전 */
+function ocrPreprocess(canvas, invert){
+  const g = canvas.getContext("2d");
+  const d = g.getImageData(0, 0, canvas.width, canvas.height);
+  const p = d.data, n = p.length/4;
+  const lum = new Uint8Array(n), hist = new Uint32Array(256);
+  for(let i=0;i<n;i++){
+    const l = (p[i*4]*0.299 + p[i*4+1]*0.587 + p[i*4+2]*0.114)|0;
+    lum[i] = l; hist[l]++;
+  }
+  let lo=0, hi=255, acc=0;
+  for(let i=0;i<256;i++){ acc+=hist[i]; if(acc>=n*0.05){ lo=i; break; } }
+  acc=0;
+  for(let i=255;i>=0;i--){ acc+=hist[i]; if(acc>=n*0.05){ hi=i; break; } }
+  const range = Math.max(1, hi-lo);
+  for(let i=0;i<n;i++){
+    let v = Math.round((lum[i]-lo)*255/range);
+    v = v<0?0 : v>255?255 : v;
+    if(invert) v = 255-v;
+    p[i*4] = p[i*4+1] = p[i*4+2] = v;
+  }
+  g.putImageData(d, 0, 0);
+  return canvas;
+}
+/* 선택 영역을 잘라내 인식하기 좋은 크기로 확대 */
+function extractRegion(img, r){
+  const sc = Math.min(3, 1800/Math.max(r.w, r.h));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(r.w*sc)); c.height = Math.max(1, Math.round(r.h*sc));
+  const g = c.getContext("2d");
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+  g.drawImage(img, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+  return c;
+}
+/* 어두운 라벨(검은 통에 흰 글씨)인지 자동 판단 */
+function isDarkCanvas(c){
+  const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+  const n = d.length/4, step = Math.max(1, Math.floor(n/20000));
+  let sum = 0, cnt = 0;
+  for(let i=0; i<n; i+=step){ sum += d[i*4]*0.299 + d[i*4+1]*0.587 + d[i*4+2]*0.114; cnt++; }
+  return (sum/cnt) < 115;
+}
+/* 기울어진 사진 대비: 각도를 바꿔 다시 그리기 */
+function rotateCanvas(base, deg){
+  const c = document.createElement("canvas");
+  c.width = base.width; c.height = base.height;
+  const g = c.getContext("2d");
+  g.fillStyle = "#808080"; g.fillRect(0, 0, c.width, c.height);
+  g.translate(c.width/2, c.height/2); g.rotate(deg*Math.PI/180);
+  g.drawImage(base, -base.width/2, -base.height/2);
+  return c;
+}
+/* 어두우면 반전 → 읽기 방식 2가지 × 여러 각도로 읽어서 결과를 합침.
+   주의: 인식기 하나에서 setParameters로 방식을 바꾸면 인식이 망가지는 버그가 있어
+   방식별로 인식기를 따로 만들어 사용한다. */
+async function ocrRecognizeCanvas(base, statusFn){
+  await loadTesseract();
+  const logger = m=>{ if(m.status==="recognizing text" && statusFn) statusFn(Math.round(m.progress*100)); };
+  const wAuto = await Tesseract.createWorker("kor+eng", 1, {logger}); // 기본(자동) 방식
+  const wCol  = await Tesseract.createWorker("kor+eng", 1, {logger}); // 단(표) 방식
+  await wCol.setParameters({tessedit_pageseg_mode: "4"});
+  const dark = isDarkCanvas(base);
+  const merged = {};
+  const passes = [[wAuto,0],[wCol,0],[wCol,-10],[wAuto,-10],[wCol,10],[wAuto,10],[wCol,-20],[wAuto,-20],[wCol,20],[wAuto,20]];
+  let tries = 0, noNewStreak = 0;
+  try{
+    for(const [worker, ang] of passes){
+      tries++;
+      if(tries>1) ocrSetStatus("방식을 바꿔 다시 읽는 중… ("+tries+"/"+passes.length+")");
+      const c = ocrPreprocess(rotateCanvas(base, ang), dark);
+      const {data} = await worker.recognize(c);
+      const f = parseNutritionText(data.text||"");
+      let added = 0;
+      f.forEach(x=>{
+        if(x.key==="omega3"){ // 각도별로 EPA·DHA가 부분만 읽힐 수 있어 가장 큰 값 채택
+          if(x.amount > (merged.omega3||0)){ if(merged.omega3===undefined) added++; merged.omega3 = x.amount; }
+        }
+        else if(merged[x.key]===undefined){ merged[x.key] = x.amount; added++; }
+      });
+      noNewStreak = added===0 ? noNewStreak+1 : 0;
+      if(Object.keys(merged).length>=1 && noNewStreak>=2) break; // 찾은 뒤 두 번 연속 새 성분이 없으면 종료
+    }
+  }finally{ await wAuto.terminate(); await wCol.terminate(); }
+  return Object.entries(merged).map(([key,amount])=>({key,amount}));
+}
+/* ---- 성분 표 영역 선택 화면 ---- */
+let cropState = null;
+function openCrop(img){
+  cropState = {img, rect:null, scale:1};
+  const ov = document.getElementById("cropOverlay");
+  ov.style.display = "flex";
+  const canvas = document.getElementById("cropCanvas");
+  const maxW = Math.min(window.innerWidth-28, 600);
+  const maxH = window.innerHeight*0.58;
+  const sc = Math.min(maxW/img.width, maxH/img.height);
+  canvas.width = Math.round(img.width*sc); canvas.height = Math.round(img.height*sc);
+  cropState.scale = sc;
+  drawCrop();
+}
+function drawCrop(){
+  const c = document.getElementById("cropCanvas"), g = c.getContext("2d");
+  g.drawImage(cropState.img, 0, 0, c.width, c.height);
+  const r = cropState.rect;
+  if(r && r.w>2 && r.h>2){
+    g.fillStyle = "rgba(0,0,0,.55)";
+    g.fillRect(0, 0, c.width, r.y);
+    g.fillRect(0, r.y+r.h, c.width, c.height-r.y-r.h);
+    g.fillRect(0, r.y, r.x, r.h);
+    g.fillRect(r.x+r.w, r.y, c.width-r.x-r.w, r.h);
+    g.strokeStyle = "#2dd4bf"; g.lineWidth = 3;
+    g.strokeRect(r.x, r.y, r.w, r.h);
+  }
+}
+(function(){
+  const c = document.getElementById("cropCanvas");
+  let dragging = false, sx = 0, sy = 0;
+  const pos = e => {
+    const b = c.getBoundingClientRect();
+    return {x:(e.clientX-b.left)*c.width/b.width, y:(e.clientY-b.top)*c.height/b.height};
+  };
+  c.addEventListener("pointerdown", e=>{
+    if(!cropState) return;
+    dragging = true; const p = pos(e); sx = p.x; sy = p.y;
+    cropState.rect = {x:sx, y:sy, w:0, h:0};
+    try{ c.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault();
+  });
+  c.addEventListener("pointermove", e=>{
+    if(!dragging || !cropState) return;
+    const p = pos(e);
+    cropState.rect = {x:Math.min(sx,p.x), y:Math.min(sy,p.y), w:Math.abs(p.x-sx), h:Math.abs(p.y-sy)};
+    drawCrop();
+    e.preventDefault();
+  });
+  c.addEventListener("pointerup", ()=>{ dragging = false; });
+})();
+function closeCrop(){
+  document.getElementById("cropOverlay").style.display = "none";
+  cropState = null;
+}
+async function cropConfirm(whole){
+  if(!cropState) return;
+  const img = cropState.img, s = cropState.scale, sel = cropState.rect;
+  let r;
+  if(whole || !sel || sel.w<15 || sel.h<15) r = {x:0, y:0, w:img.width, h:img.height};
+  else r = {x:sel.x/s, y:sel.y/s, w:sel.w/s, h:sel.h/s};
+  closeCrop();
+  try{
+    ocrSetStatus("글자 인식 도구 준비 중… (처음 한 번만 오래 걸려요)");
+    const base = extractRegion(img, r);
+    const found = await ocrRecognizeCanvas(base, pct=>ocrSetStatus("글자를 읽는 중… "+pct+"%"));
+    if(found.length===0){
+      ocrSetStatus("⚠️ 성분을 찾지 못했어요. <b>성분 표만 꽉 차게 선택</b>했는지, 사진이 밝고 선명한지 확인하고 다시 시도해 보세요.");
+      return;
+    }
+    persistName();
+    found.forEach(f=>{
+      const i = formIngs.findIndex(x=>x.key===f.key);
+      if(i>=0) formIngs[i].amount = f.amount; else formIngs.push(f);
+    });
+    render();
+    setTimeout(()=>ocrSetStatus("✅ <b>"+found.length+"개 성분을 읽었어요!</b> 아래 숫자가 라벨과 같은지 꼭 확인해 주세요."), 0);
+  }catch(e){
+    ocrSetStatus("⚠️ 사진을 읽지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.");
+  }
+}
 let tessLoading = null;
 function loadTesseract(){
   if(window.Tesseract) return Promise.resolve();
@@ -809,31 +996,9 @@ async function ocrPhoto(input){
   const file = input.files[0]; input.value = "";
   if(!file) return;
   try{
-    ocrSetStatus("사진 준비 중…");
     const img = await ocrLoadImage(file);
-    const canvas = ocrDownscale(img, 2000);
-    ocrSetStatus("글자 인식 도구를 내려받는 중… (처음 한 번만, 조금 걸려요)");
-    await loadTesseract();
-    const worker = await Tesseract.createWorker("kor+eng", 1, {
-      logger: m=>{ if(m.status==="recognizing text") ocrSetStatus("글자를 읽는 중… "+Math.round(m.progress*100)+"%"); }
-    });
-    const {data} = await worker.recognize(canvas);
-    await worker.terminate();
-    const found = parseNutritionText(data.text||"");
-    if(found.length===0){
-      ocrSetStatus("⚠️ 성분을 찾지 못했어요. 라벨의 <b>영양·기능 정보 표</b>가 화면에 크고 반듯하게 나오도록 다시 찍어보세요.");
-      return;
-    }
-    persistName();
-    found.forEach(f=>{
-      const i = formIngs.findIndex(r=>r.key===f.key);
-      if(i>=0) formIngs[i].amount = f.amount; else formIngs.push(f);
-    });
-    render();
-    setTimeout(()=>ocrSetStatus("✅ <b>"+found.length+"개 성분을 읽었어요!</b> 아래 숫자가 라벨과 같은지 꼭 확인해 주세요."), 0);
-  }catch(e){
-    ocrSetStatus("⚠️ 사진을 읽지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.");
-  }
+    openCrop(img); // 성분 표 부분을 선택하는 화면 열기 → cropConfirm()에서 인식 진행
+  }catch(e){ ocrSetStatus("⚠️ 사진을 열지 못했어요. 다른 사진으로 시도해 보세요."); }
 }
 
 /* ================= 앱이 열려 있는 동안 울리는 알람 ================= */
