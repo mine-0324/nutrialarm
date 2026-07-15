@@ -100,6 +100,13 @@
   .ing-row input{flex:1}
   .ing-row .unit{font-size:13px; color:var(--sub); width:34px; flex-shrink:0}
   .ing-row .del{background:none; color:#9ca3af; font-size:18px; padding:4px; flex-shrink:0}
+  .advice{background:var(--blue-bg); border-radius:12px; padding:12px 14px; font-size:14px; margin-bottom:10px; color:#1e3a8a; line-height:1.55}
+  .advice details{margin-top:4px}
+  .advice summary{color:var(--blue); font-size:13.5px; padding:2px 0}
+  .qt{
+    display:inline-block; background:var(--teal-bg); color:var(--teal-dark); border:1.5px solid #99f6e4;
+    border-radius:999px; padding:8px 13px; font-size:13.5px; font-weight:600; margin:0 6px 8px 0;
+  }
   /* ---- analysis ---- */
   .nut-row{margin-bottom:12px}
   .nut-row .top{display:flex; justify-content:space-between; font-size:14px; margin-bottom:3px}
@@ -220,25 +227,98 @@ const NUTRIENTS = {
   probiotics:{name:"유산균(프로바이오틱스)",unit:"억",rda:1,   ul:null, tip:"억 CFU 단위"},
 };
 
-/* ================= 자주 먹는 영양제 미리 채우기 =================
-   선택하면 일반적인 함량이 자동 입력됩니다. 실제 제품 라벨을 보고 숫자를 고쳐 쓰세요. */
-const PRESETS = [
-  {name:"종합비타민 (일반형)", ing:{vitA:700, vitC:100, vitD:10, vitE:11, b1:1.2, b2:1.4, b6:1.5, b12:2.4, niacin:15, folate:400, biotin:30, pantothenic:5, zinc:8.5}},
-  {name:"비타민C 1000㎎", ing:{vitC:1000}},
-  {name:"비타민D 1000IU", ing:{vitD:25}},
-  {name:"비타민D 2000IU", ing:{vitD:50}},
-  {name:"비타민D 5000IU", ing:{vitD:125}},
-  {name:"오메가3 (EPA+DHA 1000㎎)", ing:{omega3:1000}},
-  {name:"칼마디 (칼슘+마그네슘+비타민D)", ing:{calcium:700, magnesium:350, vitD:25}},
-  {name:"마그네슘 315㎎", ing:{magnesium:315}},
-  {name:"철분제 24㎎", ing:{iron:24}},
-  {name:"아연 15㎎", ing:{zinc:15}},
-  {name:"루테인 20㎎", ing:{lutein:20}},
-  {name:"밀크씨슬 130㎎", ing:{milkthistle:130}},
-  {name:"코엔자임Q10 100㎎", ing:{coq10:100}},
-  {name:"유산균 (100억)", ing:{probiotics:100}},
-  {name:"비타민B 컴플렉스", ing:{b1:50, b2:50, b6:50, b12:500, niacin:30, folate:400, biotin:500, pantothenic:50}},
+/* ================= 브랜드 → 제품 2단계 선택 =================
+   선택하면 대표 함량이 자동 입력됩니다. 제품 리뉴얼로 함량이 바뀔 수 있으니 라벨과 비교하세요. */
+const PRESET_GROUPS = [
+  {brand:"⭐ 내 제품 (사진으로 보내주신 것)", items:[
+    {name:"NZORIGIN 칼슘 마그네슘 아연 비타민D", ing:{calcium:300, magnesium:150, zinc:6, vitD:10}},
+    {name:"Sports Research 오메가3 (알래스카)", ing:{omega3:950}},
+    {name:"Doctor's Best 비타민D3 2000IU", ing:{vitD:50}},
+  ]},
+  {brand:"센트룸", items:[
+    {name:"센트룸 종합비타민 (일반형)", ing:{vitA:700, vitC:100, vitD:10, vitE:11, b1:1.2, b2:1.4, b6:1.5, b12:2.4, niacin:15, folate:400, biotin:30, pantothenic:5, zinc:8.5}},
+  ]},
+  {brand:"고려은단", items:[
+    {name:"고려은단 비타민C 1000", ing:{vitC:1000}},
+  ]},
+  {brand:"종근당건강", items:[
+    {name:"락토핏 생유산균 골드", ing:{probiotics:10}},
+  ]},
+  {brand:"나우푸드 (NOW Foods)", items:[
+    {name:"오메가3 1000㎎ (EPA180+DHA120)", ing:{omega3:300}},
+    {name:"마그네슘 400㎎", ing:{magnesium:400}},
+    {name:"아연 피콜리네이트 50㎎ (고함량)", ing:{zinc:50}},
+  ]},
+  {brand:"솔가 (Solgar)", items:[
+    {name:"비타민D3 5000IU", ing:{vitD:125}},
+    {name:"아연 피콜리네이트 22㎎", ing:{zinc:22}},
+  ]},
+  {brand:"캘리포니아 골드 뉴트리션", items:[
+    {name:"오메가800 (EPA480+DHA320)", ing:{omega3:800}},
+    {name:"비타민C 골드 1000㎎", ing:{vitC:1000}},
+  ]},
+  {brand:"일반 제품 (성분 기준으로 고르기)", items:[
+    {name:"종합비타민 (일반형)", ing:{vitA:700, vitC:100, vitD:10, vitE:11, b1:1.2, b2:1.4, b6:1.5, b12:2.4, niacin:15, folate:400, biotin:30, pantothenic:5, zinc:8.5}},
+    {name:"비타민C 1000㎎", ing:{vitC:1000}},
+    {name:"비타민D 1000IU", ing:{vitD:25}},
+    {name:"비타민D 2000IU", ing:{vitD:50}},
+    {name:"비타민D 5000IU", ing:{vitD:125}},
+    {name:"오메가3 (EPA+DHA 1000㎎)", ing:{omega3:1000}},
+    {name:"칼마디 (칼슘+마그네슘+비타민D)", ing:{calcium:700, magnesium:350, vitD:25}},
+    {name:"마그네슘 315㎎", ing:{magnesium:315}},
+    {name:"철분제 24㎎", ing:{iron:24}},
+    {name:"아연 15㎎", ing:{zinc:15}},
+    {name:"루테인 20㎎", ing:{lutein:20}},
+    {name:"밀크씨슬 130㎎", ing:{milkthistle:130}},
+    {name:"코엔자임Q10 100㎎", ing:{coq10:100}},
+    {name:"유산균 (100억)", ing:{probiotics:100}},
+    {name:"비타민B 컴플렉스", ing:{b1:50, b2:50, b6:50, b12:500, niacin:30, folate:400, biotin:500, pantothenic:50}},
+  ]},
 ];
+
+/* ================= 성분별 추천 복용 시간 ================= */
+const TIMING = {
+  vitA:"식사 직후 — 지용성이라 기름기 있는 식사와 함께 흡수가 잘돼요",
+  vitD:"식사 직후 — 지용성. 아침·점심 식후가 무난해요",
+  vitE:"식사 직후 — 지용성",
+  vitK:"식사 직후 — 지용성",
+  vitC:"아무 때나 — 속이 쓰리면 식후. 철분과 함께 먹으면 철분 흡수를 도와요",
+  b1:"아침 식후 — B군은 에너지 대사를 도와요. 늦은 저녁엔 수면에 방해될 수 있어요",
+  b2:"아침 식후 — B군은 에너지 대사를 도와요",
+  niacin:"아침 식후 — B군. 고용량은 홍조가 생길 수 있어 식후 권장",
+  b6:"아침 식후 — B군",
+  folate:"아무 때나 — 규칙적으로만 드시면 돼요",
+  b12:"아침 식후 — B군",
+  biotin:"아침 식후 — B군",
+  pantothenic:"아침 식후 — B군",
+  calcium:"저녁 식후 — 한 번에 500㎎ 이하로. 철분과 2시간 이상 간격을 두세요",
+  magnesium:"저녁 식후~자기 전 — 근육 이완과 수면에 도움을 줘요",
+  iron:"아침 공복 — 흡수가 가장 좋아요. 속이 쓰리면 식후로. 커피·칼슘과 2시간 간격",
+  zinc:"식후 — 공복엔 속이 메스꺼울 수 있어요. 고용량 철분·칼슘과는 시간 분리",
+  copper:"식후 — 아연 고용량과 함께라면 균형 확인",
+  selenium:"식후 — 아무 시간이나 괜찮아요",
+  omega3:"식사 직후 — 기름기 있는 식사와 함께 먹으면 흡수가 늘어요",
+  lutein:"식사 직후 — 지용성",
+  coq10:"아침·점심 식후 — 지용성. 늦은 저녁엔 일부에서 잠을 설칠 수 있어요",
+  milkthistle:"아무 때나 — 대개 식후로 안내돼요",
+  probiotics:"아침 공복 또는 자기 전 — 위산이 적을 때 균이 더 많이 살아남아요",
+};
+const B_KEYS = ["b1","b2","b6","b12","niacin","biotin","pantothenic"];
+const FAT_KEYS = ["vitA","vitD","vitE","vitK","omega3","lutein","coq10"];
+function timingAdvice(keys){
+  if(keys.length===0) return null;
+  let txt;
+  if(keys.includes("iron")) txt = "아침 공복 (커피·칼슘과 2시간 간격)";
+  else if(keys.some(k=>B_KEYS.includes(k))) txt = "아침 식후";
+  else if(keys.includes("magnesium") && !keys.includes("calcium")) txt = "저녁 식후 또는 자기 전";
+  else if(keys.includes("calcium") || keys.includes("magnesium")) txt = "저녁 식후";
+  else if(keys.includes("probiotics")) txt = "아침 공복 또는 자기 전";
+  else if(keys.includes("zinc")) txt = "저녁 식후";
+  else if(keys.some(k=>FAT_KEYS.includes(k))) txt = "식사 직후 (아침·점심 아무 때나)";
+  else txt = "편한 시간에 규칙적으로";
+  const details = keys.filter(k=>TIMING[k]).map(k=>({name:NUTRIENTS[k].name, tip:TIMING[k]}));
+  return {txt, details};
+}
 
 /* ================= 조합 규칙 ================= */
 const COMBO_RULES = [
@@ -398,32 +478,34 @@ function viewEdit(){
   const isNew = editingId==="new";
   const s = isNew ? null : state.supps.find(x=>x.id===editingId);
   if(!window._formInit || window._formInitFor!==editingId){
-    formTimes = s ? [...s.times] : ["08:00"];
+    formTimes = s ? [...s.times] : [];
     formIngs = s ? Object.entries(s.ing||{}).map(([key,amount])=>({key,amount})) : [];
     window._formInit = true; window._formInitFor = editingId;
+    window._presetBrand = "";
   }
   const nutOptions = k => Object.entries(NUTRIENTS)
     .map(([key,n])=>`<option value="${key}" ${key===k?"selected":""}>${n.name}</option>`).join("");
   let html = `<div class="card"><h2>${isNew?"영양제 추가":"영양제 수정"}</h2>`;
 
   if(isNew){
-    html += `<label class="fld">자주 먹는 영양제에서 고르기 (선택)</label>
-    <select id="presetSel" onchange="applyPreset(this.value)">
-      <option value="">— 직접 입력할게요 —</option>
-      ${PRESETS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join("")}
-    </select>
-    <div class="muted" style="margin-top:4px">고르면 일반적인 함량이 채워져요. <b>내 제품 라벨을 보고 숫자를 고쳐 쓰세요.</b></div>`;
+    const bi = window._presetBrand;
+    html += `<label class="fld">① 브랜드에서 고르기 (선택)</label>
+    <select id="brandSel" onchange="pickBrand(this.value)">
+      <option value="">— 직접 입력하거나 사진으로 읽을게요 —</option>
+      ${PRESET_GROUPS.map((g,i)=>`<option value="${i}" ${String(i)===bi?"selected":""}>${g.brand}</option>`).join("")}
+    </select>`;
+    if(bi!=="" && PRESET_GROUPS[+bi]){
+      html += `<label class="fld">② 제품 고르기</label>
+      <select id="prodSel" onchange="pickProduct(this.value)">
+        <option value="">— 제품을 선택하세요 —</option>
+        ${PRESET_GROUPS[+bi].items.map((p,i)=>`<option value="${i}">${p.name}</option>`).join("")}
+      </select>`;
+    }
+    html += `<div class="muted" style="margin-top:4px">고르면 함량이 자동으로 채워져요. 제품이 리뉴얼되면 함량이 바뀔 수 있으니 <b>라벨과 한번 비교</b>해 주세요.</div>`;
   }
 
   html += `<label class="fld">제품 이름</label>
   <input type="text" id="fName" value="${s?esc(s.name):""}" placeholder="예: ○○ 비타민D 2000IU">
-
-  <label class="fld">복용 시간 (여러 개 가능)</label>
-  <div class="row">
-    <input type="time" id="fTime" value="08:00">
-    <button class="btn sm" onclick="addTime()">추가</button>
-  </div>
-  <div id="timeChips">${renderTimeChips()}</div>
 
   <label class="fld">성분 함량 (라벨의 '1일 섭취량당' 기준)</label>
   <button class="btn outline" style="margin:0 0 10px" onclick="document.getElementById('photoInput').click()">📷 라벨 사진으로 자동 입력</button>
@@ -439,7 +521,31 @@ function viewEdit(){
     </div>`).join("")}
   </div>
   <button class="btn gray" onclick="formIngs.push({key:'vitC',amount:0});persistName();render()">+ 성분 추가</button>
-  <div class="muted" style="margin-top:6px">💡 비타민D는 IU가 아니라 ㎍로 입력해요. 1000IU = 25㎍</div>
+  <div class="muted" style="margin-top:6px">💡 비타민D는 IU가 아니라 ㎍로 입력해요. 1000IU = 25㎍</div>`;
+
+  // 성분에 따른 추천 복용 시간
+  const adv = timingAdvice(formIngs.map(r=>r.key));
+  html += `<label class="fld">복용 시간 (여러 개 가능)</label>`;
+  if(adv){
+    html += `<div class="advice">
+      <b>💡 이 성분 조합의 추천: ${adv.txt}</b>
+      <div class="muted" style="margin-top:2px">아래 버튼으로 바로 추가하거나, 직접 시간을 정하세요.</div>
+      <details><summary>성분별 이유 보기</summary>
+        <ul style="padding-left:18px; margin-top:4px">${adv.details.map(d=>`<li style="margin-bottom:4px"><b>${d.name}</b>: ${d.tip}</li>`).join("")}</ul>
+      </details>
+    </div>`;
+  }
+  html += `<div style="margin-bottom:4px">
+    <button class="qt" onclick="addTimeQuick('08:00')">🌅 아침 08:00</button>
+    <button class="qt" onclick="addTimeQuick('12:30')">🍚 점심 12:30</button>
+    <button class="qt" onclick="addTimeQuick('19:00')">🌆 저녁 19:00</button>
+    <button class="qt" onclick="addTimeQuick('22:30')">🌙 자기 전 22:30</button>
+  </div>
+  <div class="row">
+    <input type="time" id="fTime" value="08:00">
+    <button class="btn sm" onclick="addTime()">추가</button>
+  </div>
+  <div id="timeChips">${renderTimeChips()}</div>
 
   <label class="fld">메모 (선택)</label>
   <input type="text" id="fMemo" value="${s&&s.memo?esc(s.memo):""}" placeholder="예: 식사 직후에 먹기">
@@ -472,9 +578,17 @@ function addTime(){
   if(t && !formTimes.includes(t)){ formTimes.push(t); formTimes.sort(); }
   persistName(); render();
 }
-function applyPreset(idx){
-  if(idx==="") return;
-  const p = PRESETS[+idx];
+function addTimeQuick(t){
+  if(!formTimes.includes(t)){ formTimes.push(t); formTimes.sort(); }
+  persistName(); render();
+}
+function pickBrand(v){
+  window._presetBrand = v;
+  persistName(); render();
+}
+function pickProduct(idx){
+  if(idx==="" || window._presetBrand==="") return;
+  const p = PRESET_GROUPS[+window._presetBrand].items[+idx];
   window._tmpName = p.name;
   formIngs = Object.entries(p.ing).map(([key,amount])=>({key,amount}));
   persistName(); render();
