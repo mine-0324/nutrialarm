@@ -1,3 +1,5 @@
 *.jpg
 *.jpeg
 test-*.png
+_demo.html
+ppt/
