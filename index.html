@@ -291,6 +291,42 @@ const COMBO_RULES = [
    msg:"마그네슘은 비타민D가 몸에서 활성화되는 것을 도와줘요. 좋은 조합이에요. 👍"},
 ];
 
+/* ================= 성별·나이별 맞춤 기준 (2020 한국인 영양소 섭취기준) =================
+   값이 성별·연령대에 따라 다른 영양소만 조정. 나머지는 기본값 사용 */
+const RDA_ADJ = {
+  vitA:      {M:800, F:650},
+  vitK:      {M:75,  F:65},
+  b1:        {M:1.2, F:1.1},
+  b2:        {M:1.5, F:1.2},
+  niacin:    {M:16,  F:14},
+  b6:        {M:1.5, F:1.4},
+  zinc:      {M:10,  F:8},
+  copper:    {M:850, F:650},
+  magnesium: {M:365, F:280},
+  iron:    (sex, age) => sex==="F" ? (age<50 ? 14 : 8) : 10,
+  calcium: (sex, age) => sex==="M" ? (age<50 ? 800 : age<65 ? 750 : 700) : (age<50 ? 700 : 800),
+  vitD:    (sex, age) => age>=65 ? 15 : 10,
+};
+const UL_ADJ = {
+  calcium: (sex, age) => age>=50 ? 2000 : 2500, // 50세 이상은 칼슘 상한이 더 낮음
+};
+function getProfile(){
+  const p = state.profile || {};
+  if(!p.sex || !p.birth) return null;
+  const age = new Date().getFullYear() - p.birth;
+  return (age>=19 && age<=110) ? {sex:p.sex, age} : null;
+}
+function rdaOf(key){
+  const n = NUTRIENTS[key], p = getProfile(), a = RDA_ADJ[key];
+  if(!p || !a) return n.rda;
+  return typeof a === "function" ? a(p.sex, p.age) : (a[p.sex] !== undefined ? a[p.sex] : n.rda);
+}
+function ulOf(key){
+  const n = NUTRIENTS[key], p = getProfile(), a = UL_ADJ[key];
+  if(!p || !a) return n.ul;
+  return typeof a === "function" ? a(p.sex, p.age) : n.ul;
+}
+
 /* ================= 데이터 저장 ================= */
 const STORE_KEY = "nutrialarm_v1";
 let state = {supps:[], records:{}};
@@ -612,12 +648,13 @@ function analyze(){
   state.supps.forEach(s=> Object.entries(s.ing||{}).forEach(([k,v])=>{ totals[k]=(totals[k]||0)+v; }));
   const rows = Object.entries(totals).map(([k,total])=>{
     const n = NUTRIENTS[k];
+    const rda = rdaOf(k), ul = ulOf(k);
     let status = "ok";
-    if(n.ul){
-      if(total > n.ul) status = "over";
-      else if(total >= n.ul*0.8) status = "warn";
+    if(ul){
+      if(total > ul) status = "over";
+      else if(total >= ul*0.8) status = "warn";
     }
-    return {key:k, name:n.name, unit:n.unit, total, rda:n.rda, ul:n.ul, tip:n.tip, status};
+    return {key:k, name:n.name, unit:n.unit, total, rda, ul, tip:n.tip, status};
   });
   rows.sort((a,b)=> (b.status==="over")-(a.status==="over") || (b.status==="warn")-(a.status==="warn"));
   const overs = rows.filter(r=>r.status==="over");
@@ -662,8 +699,14 @@ function viewAnalysis(){
   }
 
   // 함량 표
-  html += `<div class="card"><h2>하루 총 섭취량</h2>
-  <div class="muted" style="margin-bottom:14px">등록한 모든 영양제를 합친 양이에요. 막대가 <b style="color:var(--red)">빨간색</b>이면 상한 섭취량을 넘은 거예요.</div>`;
+  const prof = getProfile();
+  html += `<div class="card"><h2>하루 총 섭취량</h2>`;
+  if(prof){
+    html += `<div class="muted" style="margin-bottom:4px">기준: <b style="color:var(--teal-dark)">${prof.age}세 ${prof.sex==="M"?"남성":"여성"} 맞춤</b> (2020 한국인 영양소 섭취기준)</div>`;
+  }else{
+    html += `<div class="alert blue" style="font-size:13px"><b>💡 맞춤 분석</b>[설정] 탭에서 성별·출생연도를 입력하면 내 나이·성별에 맞는 기준으로 분석해 드려요.</div>`;
+  }
+  html += `<div class="muted" style="margin-bottom:14px">등록한 모든 영양제를 합친 양이에요. 막대가 <b style="color:var(--red)">빨간색</b>이면 상한 섭취량을 넘은 거예요.</div>`;
   if(rows.length===0) html += `<div class="muted">성분 함량이 입력된 영양제가 없어요. [영양제] 탭에서 성분을 입력해 보세요.</div>`;
   rows.forEach(r=>{
     const denom = r.ul || r.rda*3; // 상한 없으면 권장량 3배를 눈금 최대로
@@ -741,8 +784,35 @@ function viewCalendar(){
 }
 
 /* ================= 설정 탭 ================= */
+function saveProfile(){
+  if(!state.profile) state.profile = {};
+  state.profile.sex = document.getElementById("pSex").value || null;
+  state.profile.birth = parseInt(document.getElementById("pBirth").value) || null;
+  save();
+  const el = document.getElementById("profileMsg");
+  if(el) el.innerHTML = getProfile()
+    ? `✅ 저장됐어요. [분석] 탭이 <b>${getProfile().age}세 ${getProfile().sex==="M"?"남성":"여성"}</b> 기준으로 바뀌었어요.`
+    : "성별과 출생연도를 모두 입력하면 맞춤 분석이 켜져요.";
+}
 function viewSettings(){
+  const p = state.profile || {};
   return `
+  <div class="card"><h2>👤 내 정보 (맞춤 분석)</h2>
+  <p class="small" style="margin-bottom:4px">나이·성별에 따라 권장량과 상한이 달라져요. 입력하면 [분석] 탭이 내 기준으로 바뀝니다.<br>
+  <span class="muted">키·몸무게는 비타민·미네랄 기준에 쓰이지 않아 받지 않아요.</span></p>
+  <div class="row" style="margin-top:10px">
+    <select id="pSex" onchange="saveProfile()">
+      <option value="">성별 선택</option>
+      <option value="M" ${p.sex==="M"?"selected":""}>남성</option>
+      <option value="F" ${p.sex==="F"?"selected":""}>여성</option>
+    </select>
+    <input type="number" id="pBirth" inputmode="numeric" placeholder="출생연도 (예: 1965)"
+      value="${p.birth||""}" onchange="saveProfile()">
+  </div>
+  <div id="profileMsg" class="muted" style="margin-top:8px">${getProfile() ? "현재 기준: "+getProfile().age+"세 "+(getProfile().sex==="M"?"남성":"여성") : ""}</div>
+  <p class="small muted" style="margin-top:8px">※ 임신·수유 중에는 기준이 크게 달라요. 꼭 의사·약사와 상의하세요.</p>
+  </div>
+
   <div class="card"><h2>🔔 아이폰에 알람 등록하기</h2>
   <p class="small" style="margin-bottom:8px">
   아이폰은 웹앱이 스스로 알람을 울릴 수 없어요. 대신 아래 버튼을 누르면
