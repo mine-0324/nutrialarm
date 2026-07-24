@@ -173,6 +173,7 @@
   details li{margin-bottom:6px}
   .footer-note{font-size:12px; color:#9ca3af; text-align:center; padding:14px 20px 4px; line-height:1.6}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -331,7 +332,106 @@ function ulOf(key){
 const STORE_KEY = "nutrialarm_v1";
 let state = {supps:[], records:{}};
 function load(){ try{ const s = localStorage.getItem(STORE_KEY); if(s) state = JSON.parse(s); }catch(e){} }
-function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function saveLocal(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function save(){ state._updatedAt = Date.now(); saveLocal(); schedulePush(); }
+
+/* ================= 클라우드 동기화 (Supabase) =================
+   로그인하면 어느 기기에서든 같은 기록을 보게 돼요. 로그인 안 하면 이 기기에만 저장. */
+const SB_URL = "https://rupbtjaluzierjfklmbc.supabase.co";
+const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1cGJ0amFsdXppZXJqZmtsbWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4ODcxNjYsImV4cCI6MjEwMDQ2MzE2Nn0.Zc89muMmvUmw8gWWRxv7e_b4g3g7ChUZmPRLr-70ZlI";
+let sb = null, sbUser = null, pushTimer = null;
+function initCloud(){
+  if(!window.supabase) return;               // CDN 로딩 실패 시 로컬 모드로 동작
+  sb = window.supabase.createClient(SB_URL, SB_ANON);
+  sb.auth.getSession().then(({data})=>{
+    sbUser = data.session ? data.session.user : null;
+    if(sbUser) cloudSyncNow();
+    if(tab==="settings") render();
+  });
+  sb.auth.onAuthStateChange((_e, session)=>{
+    sbUser = session ? session.user : null;
+    if(tab==="settings") render();
+  });
+}
+function schedulePush(){
+  if(!sb || !sbUser) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(cloudPush, 1500);   // 연속 변경은 모아서 1.5초 뒤 한 번만 전송
+}
+function cloudStatus(t){ const el = document.getElementById("cloudStatus"); if(el) el.innerHTML = t; }
+function cloudAuthMsg(t){ const el = document.getElementById("cloudAuthMsg"); if(el) el.innerHTML = t; }
+function mergeRecords(a, b){
+  const out = {}; const dates = new Set([...Object.keys(a||{}), ...Object.keys(b||{})]);
+  dates.forEach(dk=>{ out[dk] = Object.assign({}, (a||{})[dk]||{}, (b||{})[dk]||{}); });
+  return out;
+}
+function mergeStates(local, remote){
+  // 복용 기록은 합집합(손실 없음), 영양제 목록·내 정보는 더 최근에 바꾼 쪽을 사용
+  const lt = local._updatedAt||0, rt = remote._updatedAt||0;
+  const base = (lt >= rt) ? local : remote;
+  const merged = JSON.parse(JSON.stringify(base));
+  merged.records = mergeRecords(local.records, remote.records);
+  merged._updatedAt = Math.max(lt, rt);
+  return merged;
+}
+async function cloudPull(){
+  if(!sb || !sbUser) return null;
+  const {data, error} = await sb.from("user_data").select("data").eq("user_id", sbUser.id).maybeSingle();
+  if(error){ console.warn("pull", error); return null; }
+  return data ? data.data : null;
+}
+async function cloudPush(){
+  if(!sb || !sbUser) return;
+  cloudStatus("동기화 중…");
+  const {error} = await sb.from("user_data").upsert({
+    user_id: sbUser.id, data: state, updated_at: new Date().toISOString()
+  });
+  cloudStatus(error ? "⚠️ 동기화 실패 — 잠시 후 자동 재시도돼요" : "☁️ 동기화됨");
+  if(error) console.warn("push", error);
+}
+async function cloudSyncNow(){
+  if(!sb || !sbUser) return;
+  cloudStatus("동기화 중…");
+  const remote = await cloudPull();
+  if(remote){ state = mergeStates(state, remote); saveLocal(); }
+  await cloudPush();
+  render();
+}
+function krErr(e){
+  const m = (e && e.message || "").toLowerCase();
+  if(m.includes("invalid login")) return "이메일 또는 비밀번호가 맞지 않아요.";
+  if(m.includes("already registered")) return "이미 가입된 이메일이에요. 아래 [로그인]을 눌러주세요.";
+  if(m.includes("at least 6")) return "비밀번호는 6자 이상이어야 해요.";
+  if(m.includes("not confirmed")) return "가입 확인 메일의 링크를 먼저 눌러주세요.";
+  if(m.includes("invalid") && m.includes("email")) return "이메일 주소 형식을 확인해 주세요.";
+  return (e && e.message) || "알 수 없는 오류예요.";
+}
+async function cloudSignUp(){
+  if(!sb){ cloudAuthMsg("인터넷 연결을 확인해 주세요."); return; }
+  const email = (document.getElementById("sbEmail").value||"").trim();
+  const pw = document.getElementById("sbPw").value||"";
+  if(!email || pw.length<6){ cloudAuthMsg("이메일과 6자 이상 비밀번호를 입력해 주세요."); return; }
+  cloudAuthMsg("가입 중…");
+  const {data, error} = await sb.auth.signUp({email, password: pw});
+  if(error){ cloudAuthMsg("⚠️ " + krErr(error)); return; }
+  if(data.session){ sbUser = data.session.user; cloudAuthMsg("✅ 가입 완료!"); await cloudSyncNow(); }
+  else cloudAuthMsg("📧 가입 확인 메일을 보냈어요. 메일의 링크를 누른 뒤 [로그인]하세요.");
+}
+async function cloudSignIn(){
+  if(!sb){ cloudAuthMsg("인터넷 연결을 확인해 주세요."); return; }
+  const email = (document.getElementById("sbEmail").value||"").trim();
+  const pw = document.getElementById("sbPw").value||"";
+  if(!email || !pw){ cloudAuthMsg("이메일과 비밀번호를 입력해 주세요."); return; }
+  cloudAuthMsg("로그인 중…");
+  const {data, error} = await sb.auth.signInWithPassword({email, password: pw});
+  if(error){ cloudAuthMsg("⚠️ " + krErr(error)); return; }
+  sbUser = data.user; cloudAuthMsg("✅ 로그인 완료!"); await cloudSyncNow();
+}
+async function cloudSignOut(){
+  if(!sb) return;
+  if(!confirm("로그아웃할까요? 이 기기의 기록은 그대로 남아 있어요.")) return;
+  await sb.auth.signOut(); sbUser = null; render();
+}
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function dateKey(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function todayKey(){ return dateKey(new Date()); }
@@ -794,9 +894,32 @@ function saveProfile(){
     ? `✅ 저장됐어요. [분석] 탭이 <b>${getProfile().age}세 ${getProfile().sex==="M"?"남성":"여성"}</b> 기준으로 바뀌었어요.`
     : "성별과 출생연도를 모두 입력하면 맞춤 분석이 켜져요.";
 }
+function viewCloudCard(){
+  if(sbUser){
+    return `<div class="card"><h2>☁️ 클라우드 동기화</h2>
+    <div class="alert green" style="margin-bottom:8px"><b>✅ 로그인됨</b>${esc(sbUser.email)}<br>
+    이 계정으로 로그인하면 <b>어느 기기에서든 같은 기록</b>을 볼 수 있어요. 폰을 바꿔도 유지돼요.</div>
+    <div id="cloudStatus" class="muted" style="margin-bottom:8px">☁️ 동기화됨</div>
+    <button class="btn outline" onclick="cloudSyncNow()">지금 동기화</button>
+    <button class="btn gray" onclick="cloudSignOut()">로그아웃</button>
+    </div>`;
+  }
+  return `<div class="card"><h2>☁️ 클라우드 동기화 <span class="muted" style="font-size:13px;font-weight:400">(선택)</span></h2>
+  <p class="small" style="margin-bottom:10px">로그인하면 <b>폰을 바꿔도, 아이폰·갤럭시에서도</b> 같은 복용 기록이 유지돼요.<br>
+  <span class="muted">로그인 안 해도 이 기기에서는 지금처럼 그대로 쓸 수 있어요.</span></p>
+  <label class="fld" style="margin-top:0">이메일</label>
+  <input type="email" id="sbEmail" inputmode="email" autocomplete="username" placeholder="예: hong@gmail.com">
+  <label class="fld">비밀번호 (6자 이상)</label>
+  <input type="password" id="sbPw" autocomplete="current-password" placeholder="비밀번호">
+  <button class="btn" onclick="cloudSignIn()">로그인</button>
+  <button class="btn outline" onclick="cloudSignUp()">회원가입 (처음이면)</button>
+  <div id="cloudAuthMsg" class="muted" style="margin-top:8px"></div>
+  <p class="small muted" style="margin-top:8px">비밀번호는 안전하게 암호화되어 저장되며, 각자 자기 기록만 볼 수 있어요.</p>
+  </div>`;
+}
 function viewSettings(){
   const p = state.profile || {};
-  return `
+  return viewCloudCard() + `
   <div class="card"><h2>👤 내 정보 (맞춤 분석)</h2>
   <p class="small" style="margin-bottom:4px">나이·성별에 따라 권장량과 상한이 달라져요. 입력하면 [분석] 탭이 내 기준으로 바뀝니다.<br>
   <span class="muted">키·몸무게는 비타민·미네랄 기준에 쓰이지 않아 받지 않아요.</span></p>
@@ -1223,6 +1346,7 @@ setInterval(checkAlarm, 15000);
 /* ================= 시작 ================= */
 load();
 render();
+initCloud();
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
   navigator.serviceWorker.register("sw.js").catch(()=>{});
 }

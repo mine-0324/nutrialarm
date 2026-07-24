@@ -1,5 +1,5 @@
 /* 오프라인에서도 앱이 열리도록 파일을 저장해 두는 서비스 워커 */
-const CACHE = "nutrialarm-v3";
+const CACHE = "nutrialarm-v4";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-512.png", "./products.json"];
 
 self.addEventListener("install", e => {
@@ -15,6 +15,8 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
+  // 같은 주소의 GET 요청만 캐시 처리. Supabase API·CDN 등 외부/비GET은 그대로 통과
+  if (e.request.method !== "GET" || new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     fetch(e.request).then(res => {
       const copy = res.clone();
