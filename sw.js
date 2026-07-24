@@ -1,5 +1,5 @@
 /* 오프라인에서도 앱이 열리도록 파일을 저장해 두는 서비스 워커 */
-const CACHE = "nutrialarm-v4";
+const CACHE = "nutrialarm-v5";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-512.png", "./products.json"];
 
 self.addEventListener("install", e => {
