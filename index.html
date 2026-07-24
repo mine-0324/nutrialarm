@@ -100,6 +100,10 @@
   .ing-row input{flex:1}
   .ing-row .unit{font-size:13px; color:var(--sub); width:34px; flex-shrink:0}
   .ing-row .del{background:none; color:#9ca3af; font-size:18px; padding:4px; flex-shrink:0}
+  .sr-box{border:1.5px solid var(--line); border-radius:12px; margin-top:8px; max-height:280px; overflow-y:auto; background:#fff}
+  .sr-item{padding:10px 14px; border-bottom:1px solid var(--line); font-size:14px; cursor:pointer; line-height:1.45}
+  .sr-item:last-child{border-bottom:none}
+  .sr-item:active{background:var(--teal-bg)}
   .advice{background:var(--blue-bg); border-radius:12px; padding:12px 14px; font-size:14px; margin-bottom:10px; color:#1e3a8a; line-height:1.55}
   .advice details{margin-top:4px}
   .advice summary{color:var(--blue); font-size:13.5px; padding:2px 0}
@@ -488,6 +492,10 @@ function viewEdit(){
   let html = `<div class="card"><h2>${isNew?"영양제 추가":"영양제 수정"}</h2>`;
 
   if(isNew){
+    html += `<label class="fld">🔍 제품 이름으로 검색 (식약처 등록 5,200여 개)</label>
+    <input type="text" id="prodSearch" placeholder="예: 락토핏, 루테인, 오메가3…" oninput="searchProducts(this.value)">
+    <div id="searchResults"></div>
+    <div class="muted" style="margin-top:4px">국내에 신고된 제품이라면 이름만 쳐도 찾을 수 있어요.</div>`;
     const bi = window._presetBrand;
     html += `<label class="fld">① 브랜드에서 고르기 (선택)</label>
     <select id="brandSel" onchange="pickBrand(this.value)">
@@ -572,6 +580,65 @@ function persistName(){
     const n2 = document.getElementById("fName"); if(n2 && window._tmpName!==undefined) n2.value = window._tmpName;
     const m2 = document.getElementById("fMemo"); if(m2 && window._tmpMemo!==undefined) m2.value = window._tmpMemo;
   },0);
+}
+/* ---- 식약처 등록 제품 검색 ---- */
+let PRODUCT_DB = null, prodLoading = false, searchTimer = null;
+function normTxt(s){ return String(s).toLowerCase().replace(/\s+/g, ""); }
+async function loadProductDB(){
+  if(PRODUCT_DB || prodLoading) return;
+  prodLoading = true;
+  try{
+    const res = await fetch("products.json");
+    if(res.ok) PRODUCT_DB = await res.json();
+  }catch(e){}
+  prodLoading = false;
+}
+function searchProducts(q){
+  window._searchQ = q;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(doProductSearch, 250);
+}
+async function doProductSearch(){
+  const el = document.getElementById("searchResults");
+  if(!el) return;
+  const q = normTxt(window._searchQ || "");
+  if(q.length < 2){ el.innerHTML = ""; return; }
+  if(!PRODUCT_DB){
+    el.innerHTML = '<div class="muted" style="padding:8px 2px">제품 목록을 불러오는 중… (처음 한 번만)</div>';
+    await loadProductDB();
+    if(!PRODUCT_DB){ el.innerHTML = '<div class="muted" style="padding:8px 2px">목록을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.</div>'; return; }
+    if(normTxt(window._searchQ||"") !== q) return; // 그새 검색어가 바뀜
+  }
+  const hits = [];
+  for(const p of PRODUCT_DB){
+    if(normTxt(p[0]).includes(q) || (p[1] && normTxt(p[1]).includes(q))){
+      hits.push(p);
+      if(hits.length >= 30) break;
+    }
+  }
+  window._searchHits = hits;
+  if(hits.length === 0){
+    el.innerHTML = '<div class="muted" style="padding:8px 2px">검색 결과가 없어요. 아래 브랜드 선택이나 📷 사진 인식을 이용해 보세요.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="sr-box">' + hits.map((p,i)=>`
+    <div class="sr-item" onclick="pickSearched(${i})">
+      <b>${esc(p[0])}</b> ${p[2] ? '<span class="tag ok">함량 자동</span>' : '<span class="tag warn">이름만</span>'}
+      ${p[1] ? `<br><span style="font-size:12px;color:var(--sub)">${esc(p[1])}</span>` : ""}
+    </div>`).join("") + "</div>";
+}
+function pickSearched(i){
+  const p = (window._searchHits||[])[i];
+  if(!p) return;
+  window._tmpName = p[0];
+  if(p[2]) formIngs = Object.entries(p[2]).map(([key,amount])=>({key, amount}));
+  persistName(); render();
+  setTimeout(()=>{
+    const n = document.getElementById("fName"); if(n) n.value = p[0];
+    ocrSetStatus(p[2]
+      ? "✅ 식약처 등록 정보로 성분을 채웠어요. <b>라벨과 같은지 확인</b>해 주세요. (아연·마그네슘 등 일부 성분은 이 데이터에 없어 라벨 확인 필요)"
+      : "이 제품은 식약처 데이터에 함량 숫자가 없어요. 라벨을 보고 입력하거나 📷 사진 인식을 이용해 주세요.");
+  }, 0);
 }
 function addTime(){
   const t = document.getElementById("fTime").value;

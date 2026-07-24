@@ -1,6 +1,6 @@
 /* 오프라인에서도 앱이 열리도록 파일을 저장해 두는 서비스 워커 */
-const CACHE = "nutrialarm-v2";
-const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-512.png"];
+const CACHE = "nutrialarm-v3";
+const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-512.png", "./products.json"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
