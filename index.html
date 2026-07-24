@@ -231,55 +231,6 @@ const NUTRIENTS = {
   probiotics:{name:"유산균(프로바이오틱스)",unit:"억",rda:1,   ul:null, tip:"억 CFU 단위"},
 };
 
-/* ================= 브랜드 → 제품 2단계 선택 =================
-   선택하면 대표 함량이 자동 입력됩니다. 제품 리뉴얼로 함량이 바뀔 수 있으니 라벨과 비교하세요. */
-const PRESET_GROUPS = [
-  {brand:"⭐ 내 제품 (사진으로 보내주신 것)", items:[
-    {name:"NZORIGIN 칼슘 마그네슘 아연 비타민D", ing:{calcium:300, magnesium:150, zinc:6, vitD:10}},
-    {name:"Sports Research 오메가3 (알래스카)", ing:{omega3:950}},
-    {name:"Doctor's Best 비타민D3 2000IU", ing:{vitD:50}},
-  ]},
-  {brand:"센트룸", items:[
-    {name:"센트룸 종합비타민 (일반형)", ing:{vitA:700, vitC:100, vitD:10, vitE:11, b1:1.2, b2:1.4, b6:1.5, b12:2.4, niacin:15, folate:400, biotin:30, pantothenic:5, zinc:8.5}},
-  ]},
-  {brand:"고려은단", items:[
-    {name:"고려은단 비타민C 1000", ing:{vitC:1000}},
-  ]},
-  {brand:"종근당건강", items:[
-    {name:"락토핏 생유산균 골드", ing:{probiotics:10}},
-  ]},
-  {brand:"나우푸드 (NOW Foods)", items:[
-    {name:"오메가3 1000㎎ (EPA180+DHA120)", ing:{omega3:300}},
-    {name:"마그네슘 400㎎", ing:{magnesium:400}},
-    {name:"아연 피콜리네이트 50㎎ (고함량)", ing:{zinc:50}},
-  ]},
-  {brand:"솔가 (Solgar)", items:[
-    {name:"비타민D3 5000IU", ing:{vitD:125}},
-    {name:"아연 피콜리네이트 22㎎", ing:{zinc:22}},
-  ]},
-  {brand:"캘리포니아 골드 뉴트리션", items:[
-    {name:"오메가800 (EPA480+DHA320)", ing:{omega3:800}},
-    {name:"비타민C 골드 1000㎎", ing:{vitC:1000}},
-  ]},
-  {brand:"일반 제품 (성분 기준으로 고르기)", items:[
-    {name:"종합비타민 (일반형)", ing:{vitA:700, vitC:100, vitD:10, vitE:11, b1:1.2, b2:1.4, b6:1.5, b12:2.4, niacin:15, folate:400, biotin:30, pantothenic:5, zinc:8.5}},
-    {name:"비타민C 1000㎎", ing:{vitC:1000}},
-    {name:"비타민D 1000IU", ing:{vitD:25}},
-    {name:"비타민D 2000IU", ing:{vitD:50}},
-    {name:"비타민D 5000IU", ing:{vitD:125}},
-    {name:"오메가3 (EPA+DHA 1000㎎)", ing:{omega3:1000}},
-    {name:"칼마디 (칼슘+마그네슘+비타민D)", ing:{calcium:700, magnesium:350, vitD:25}},
-    {name:"마그네슘 315㎎", ing:{magnesium:315}},
-    {name:"철분제 24㎎", ing:{iron:24}},
-    {name:"아연 15㎎", ing:{zinc:15}},
-    {name:"루테인 20㎎", ing:{lutein:20}},
-    {name:"밀크씨슬 130㎎", ing:{milkthistle:130}},
-    {name:"코엔자임Q10 100㎎", ing:{coq10:100}},
-    {name:"유산균 (100억)", ing:{probiotics:100}},
-    {name:"비타민B 컴플렉스", ing:{b1:50, b2:50, b6:50, b12:500, niacin:30, folate:400, biotin:500, pantothenic:50}},
-  ]},
-];
-
 /* ================= 성분별 추천 복용 시간 ================= */
 const TIMING = {
   vitA:"식사 직후 — 지용성이라 기름기 있는 식사와 함께 흡수가 잘돼요",
@@ -485,7 +436,6 @@ function viewEdit(){
     formTimes = s ? [...s.times] : [];
     formIngs = s ? Object.entries(s.ing||{}).map(([key,amount])=>({key,amount})) : [];
     window._formInit = true; window._formInitFor = editingId;
-    window._presetBrand = "";
   }
   const nutOptions = k => Object.entries(NUTRIENTS)
     .map(([key,n])=>`<option value="${key}" ${key===k?"selected":""}>${n.name}</option>`).join("");
@@ -495,21 +445,7 @@ function viewEdit(){
     html += `<label class="fld">🔍 제품 이름으로 검색 (식약처 등록 5,200여 개)</label>
     <input type="text" id="prodSearch" placeholder="예: 락토핏, 루테인, 오메가3…" oninput="searchProducts(this.value)">
     <div id="searchResults"></div>
-    <div class="muted" style="margin-top:4px">국내에 신고된 제품이라면 이름만 쳐도 찾을 수 있어요.</div>`;
-    const bi = window._presetBrand;
-    html += `<label class="fld">① 브랜드에서 고르기 (선택)</label>
-    <select id="brandSel" onchange="pickBrand(this.value)">
-      <option value="">— 직접 입력하거나 사진으로 읽을게요 —</option>
-      ${PRESET_GROUPS.map((g,i)=>`<option value="${i}" ${String(i)===bi?"selected":""}>${g.brand}</option>`).join("")}
-    </select>`;
-    if(bi!=="" && PRESET_GROUPS[+bi]){
-      html += `<label class="fld">② 제품 고르기</label>
-      <select id="prodSel" onchange="pickProduct(this.value)">
-        <option value="">— 제품을 선택하세요 —</option>
-        ${PRESET_GROUPS[+bi].items.map((p,i)=>`<option value="${i}">${p.name}</option>`).join("")}
-      </select>`;
-    }
-    html += `<div class="muted" style="margin-top:4px">고르면 함량이 자동으로 채워져요. 제품이 리뉴얼되면 함량이 바뀔 수 있으니 <b>라벨과 한번 비교</b>해 주세요.</div>`;
+    <div class="muted" style="margin-top:4px">이름만 쳐도 제품을 찾을 수 있어요. 고른 뒤에는 <b>라벨과 함량을 한번 비교</b>해 주세요.</div>`;
   }
 
   html += `<label class="fld">제품 이름</label>
@@ -544,10 +480,12 @@ function viewEdit(){
     </div>`;
   }
   html += `<div style="margin-bottom:4px">
-    <button class="qt" onclick="addTimeQuick('08:00')">🌅 아침 08:00</button>
-    <button class="qt" onclick="addTimeQuick('12:30')">🍚 점심 12:30</button>
-    <button class="qt" onclick="addTimeQuick('19:00')">🌆 저녁 19:00</button>
-    <button class="qt" onclick="addTimeQuick('22:30')">🌙 자기 전 22:30</button>
+    <button class="qt" onclick="addTimeQuick('08:00')">08:00</button>
+    <button class="qt" onclick="addTimeQuick('09:00')">09:00</button>
+    <button class="qt" onclick="addTimeQuick('13:00')">13:00</button>
+    <button class="qt" onclick="addTimeQuick('18:00')">18:00</button>
+    <button class="qt" onclick="addTimeQuick('19:00')">19:00</button>
+    <button class="qt" onclick="addTimeQuick('20:00')">20:00</button>
   </div>
   <div class="row">
     <input type="time" id="fTime" value="08:00">
@@ -618,7 +556,7 @@ async function doProductSearch(){
   }
   window._searchHits = hits;
   if(hits.length === 0){
-    el.innerHTML = '<div class="muted" style="padding:8px 2px">검색 결과가 없어요. 아래 브랜드 선택이나 📷 사진 인식을 이용해 보세요.</div>';
+    el.innerHTML = '<div class="muted" style="padding:8px 2px">검색 결과가 없어요. 📷 사진 인식이나 직접 입력을 이용해 보세요.</div>';
     return;
   }
   el.innerHTML = '<div class="sr-box">' + hits.map((p,i)=>`
@@ -648,18 +586,6 @@ function addTime(){
 function addTimeQuick(t){
   if(!formTimes.includes(t)){ formTimes.push(t); formTimes.sort(); }
   persistName(); render();
-}
-function pickBrand(v){
-  window._presetBrand = v;
-  persistName(); render();
-}
-function pickProduct(idx){
-  if(idx==="" || window._presetBrand==="") return;
-  const p = PRESET_GROUPS[+window._presetBrand].items[+idx];
-  window._tmpName = p.name;
-  formIngs = Object.entries(p.ing).map(([key,amount])=>({key,amount}));
-  persistName(); render();
-  setTimeout(()=>{ const n = document.getElementById("fName"); if(n) n.value = p.name; },0);
 }
 function saveSupp(){
   persistName();
